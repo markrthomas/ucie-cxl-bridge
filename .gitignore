@@ -1,0 +1,19 @@
+
+# sim
+sim/
+work/
+*.log
+*.wlf
+*.vcd
+*.fsdb
+*.vpd
+
+# tool junk
+*.jou
+*.pb
+*.str
+
+# editor
+.vscode/
+*.swp
+
