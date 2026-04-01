@@ -1,5 +1,7 @@
 # sim
 sim/
+test/build/
+doc/build/
 work/
 *.log
 *.wlf
