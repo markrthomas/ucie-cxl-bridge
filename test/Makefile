@@ -9,7 +9,7 @@ VCD       := $(BUILD_DIR)/waves.vcd
 SOURCES := $(SRC_DIR)/sync_fifo.v $(SRC_DIR)/cxl_ucie_bridge.v $(SRC_DIR)/tb_cxl_ucie_bridge.v
 OUT     := $(BUILD_DIR)/tb.out
 
-.PHONY: all run sim compile vcd gtkwave clean
+.PHONY: all run sim compile stress vcd gtkwave clean
 
 all: run
 
@@ -17,6 +17,10 @@ compile: $(OUT)
 
 run sim: compile
 	vvp $(OUT)
+
+# Default smoke + moderate stress; this adds a second phase with harsh sink backpressure.
+stress: compile
+	vvp $(OUT) +stress
 
 # Regenerate simulation and write $(VCD) (run from this directory so path matches $dumpfile)
 vcd: compile

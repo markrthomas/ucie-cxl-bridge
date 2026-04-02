@@ -1,0 +1,18 @@
+# Run Icarus Verilog simulation on every push and pull request.
+name: CI
+
+on: [push, pull_request]
+jobs:
+  sim:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Icarus Verilog
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y iverilog
+
+      - name: Simulation (default + heavy stress)
+        working-directory: test
+        run: make clean && make && make stress

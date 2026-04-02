@@ -4,10 +4,11 @@
 
 module tb_cxl_ucie_bridge;
 
-  localparam integer W           = 64;
-  localparam integer FIFO_DEPTH  = 8;
-  localparam integer NUM_CYCLES  = 4000;
-  localparam integer GOLD_SZ     = 16384;
+  localparam integer W                 = 64;
+  localparam integer FIFO_DEPTH       = 8;
+  localparam integer NUM_CYCLES       = 4000;
+  localparam integer NUM_STRESS_HEAVY = 12000;
+  localparam integer GOLD_SZ          = 32768;
 
   reg clk;
   reg rst_n;
@@ -28,6 +29,7 @@ module tb_cxl_ucie_bridge;
 
   reg [31:0] seed;
   integer cyc;
+  integer p1_c2u_sent, p1_u2c_sent;
 
   reg [W-1:0] gold_c2u[GOLD_SZ];
   reg [W-1:0] gold_u2c[GOLD_SZ];
@@ -301,7 +303,129 @@ module tb_cxl_ucie_bridge;
       $finish(1);
     end
 
-    $display("PASS stress c2u_beats=%0d u2c_beats=%0d", c2u_sent, u2c_sent);
+    p1_c2u_sent = c2u_sent;
+    p1_u2c_sent = u2c_sent;
+    $display("PASS stress c2u_beats=%0d u2c_beats=%0d", p1_c2u_sent, p1_u2c_sent);
+
+    if (!$test$plusargs("stress"))
+      $finish(0);
+
+    // --- Heavy stress: longer run, sinks ready ~20% (FIFOs stay near full) ---
+    c2u_sent = 0;
+    u2c_sent = 0;
+    c2u_rcvd = 0;
+    u2c_rcvd = 0;
+    seed     = 32'hC0FFEE01;
+
+    for (cyc = 0; cyc < NUM_STRESS_HEAVY; cyc = cyc + 1) begin
+      @(posedge clk);
+
+      scoreboard_step();
+
+      seed           = rnd32(seed);
+      ucie_out_ready <= (seed % 10) < 2;
+      seed           = rnd32(seed);
+      cxl_out_ready  <= (seed % 10) < 2;
+
+      if (cxl_in_valid && cxl_in_ready) begin
+        seed = rnd32(seed);
+        if ((seed % 4) == 0)
+          cxl_in_valid <= 1'b0;
+        else begin
+          cxl_in_valid <= 1'b1;
+          cxl_in_data  <= cxl_in_data + 64'h00000000_00001001;
+        end
+      end else if (!cxl_in_valid) begin
+        seed = rnd32(seed);
+        if ((seed % 3) != 0) begin
+          cxl_in_valid <= 1'b1;
+          cxl_in_data  <= {32'hA5C20000, 32'h00000000} ^ {16'h0, seed[15:0], seed[31:16], 16'h0};
+        end
+      end
+
+      if (ucie_in_valid && ucie_in_ready) begin
+        seed = rnd32(seed);
+        if ((seed % 5) == 0)
+          ucie_in_valid <= 1'b0;
+        else begin
+          ucie_in_valid <= 1'b1;
+          ucie_in_data  <= ucie_in_data ^ 64'h10000000_00000001;
+        end
+      end else if (!ucie_in_valid) begin
+        seed = rnd32(seed);
+        if ((seed % 4) != 0) begin
+          ucie_in_valid <= 1'b1;
+          ucie_in_data  <= {32'h5A2C0000, 32'h00000000} ^ {seed, seed};
+        end
+      end
+    end
+
+    @(posedge clk);
+    scoreboard_step();
+
+    cxl_in_valid   <= 1'b0;
+    ucie_in_valid  <= 1'b0;
+    ucie_out_ready <= 1'b1;
+    cxl_out_ready  <= 1'b1;
+
+    repeat (FIFO_DEPTH + 128) begin
+      @(posedge clk);
+
+      if (ucie_out_valid && ucie_out_ready) begin
+        if (c2u_gold_rd >= c2u_gold_wr) begin
+          $display("FAIL: heavy drain c2u underrun");
+          $finish(1);
+        end
+        if (ucie_out_data !== gold_c2u[c2u_gold_rd]) begin
+          $display("FAIL: heavy drain c2u mismatch exp=%h got=%h", gold_c2u[c2u_gold_rd], ucie_out_data);
+          $finish(1);
+        end
+        c2u_gold_rd = c2u_gold_rd + 1;
+        c2u_rcvd    = c2u_rcvd + 1;
+      end
+
+      if (cxl_out_valid && cxl_out_ready) begin
+        if (u2c_gold_rd >= u2c_gold_wr) begin
+          $display("FAIL: heavy drain u2c underrun");
+          $finish(1);
+        end
+        if (cxl_out_data !== gold_u2c[u2c_gold_rd]) begin
+          $display("FAIL: heavy drain u2c mismatch exp=%h got=%h", gold_u2c[u2c_gold_rd], cxl_out_data);
+          $finish(1);
+        end
+        u2c_gold_rd = u2c_gold_rd + 1;
+        u2c_rcvd    = u2c_rcvd + 1;
+      end
+    end
+
+    if (c2u_gold_rd !== c2u_gold_wr) begin
+      $display("FAIL: heavy c2u gold not empty wr=%0d rd=%0d", c2u_gold_wr, c2u_gold_rd);
+      $finish(1);
+    end
+    if (u2c_gold_rd !== u2c_gold_wr) begin
+      $display("FAIL: heavy u2c gold not empty wr=%0d rd=%0d", u2c_gold_wr, u2c_gold_rd);
+      $finish(1);
+    end
+    if (ucie_out_valid) begin
+      $display("FAIL: heavy ucie_out still valid after drain");
+      $finish(1);
+    end
+    if (cxl_out_valid) begin
+      $display("FAIL: heavy cxl_out still valid after drain");
+      $finish(1);
+    end
+
+    if (c2u_sent !== c2u_rcvd) begin
+      $display("FAIL: heavy c2u sent=%0d rcvd=%0d", c2u_sent, c2u_rcvd);
+      $finish(1);
+    end
+    if (u2c_sent !== u2c_rcvd) begin
+      $display("FAIL: heavy u2c sent=%0d rcvd=%0d", u2c_sent, u2c_rcvd);
+      $finish(1);
+    end
+
+    $display("PASS stress_heavy c2u_beats=%0d u2c_beats=%0d (after default stress %0d/%0d)",
+             c2u_sent, u2c_sent, p1_c2u_sent, p1_u2c_sent);
     $finish(0);
   end
 
