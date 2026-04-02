@@ -40,12 +40,12 @@ Internal blocks (to be elaborated in later revisions) may include buffering, tra
 
 The repository contains a **minimal dual-path streaming shell** intended only to validate tooling, timing of ready/valid handshakes, and testbench structure. It does **not** implement CXL or UCIe protocols.
 
-The top RTL module is `cxl_ucie_bridge`. It parameterizes flit width (`WIDTH`, default 64 bits) and provides two independent registered channels:
+The top RTL module is `cxl_ucie_bridge`. It parameterizes flit width (`WIDTH`, default 64 bits) and FIFO depth per direction (`FIFO_DEPTH`, default 8; must be a power of two for `sync_fifo`). Each direction instantiates `sync_fifo` for buffering:
 
 - **CXL → UCIe** — `cxl_in_*` to `ucie_out_*`
 - **UCIe → CXL** — `ucie_in_*` to `cxl_out_*`
 
-Each direction uses a **valid/ready** interface with a one-deep output register stage and standard backpressure: upstream `ready` is asserted when the output stage is empty or the downstream has accepted the current beat.
+Each direction uses a **valid/ready** interface with a synchronous FIFO (first-word fall-through read data) and standard backpressure: upstream `ready` is asserted when that FIFO is not full; downstream sees `valid` when the FIFO is not empty.
 
 # 5. Interface summary
 
@@ -81,7 +81,8 @@ Each direction uses a **valid/ready** interface with a one-deep output register 
 # 6. Verification
 
 - **Simulator:** Icarus Verilog (`iverilog` compilation, `vvp` execution).
-- **Testbench:** `tb_cxl_ucie_bridge` drives a single flit on each direction and checks data integrity.
+- **Testbench:** `tb_cxl_ucie_bridge` runs a short smoke test (one flit per direction), then stress with concurrent traffic, random sink `ready`, bursts, scoreboard checks, and a drain phase.
+- **Scoreboard behavior:** The testbench uses a reusable per-cycle scoreboard step and explicitly accounts for transfers on the stress-to-drain boundary clock edge before disabling new source traffic.
 - **Automation:** The `test/` directory provides a `Makefile` with targets `run`, `vcd` (optional waveform dump to `build/waves.vcd`), and `gtkwave` (regenerate VCD and open GTKWave when available).
 
 Optional waveform dumps are enabled with the `+vcd` plus argument; GTKWave is used for inspection.
@@ -90,6 +91,7 @@ Optional waveform dumps are enabled with the `+vcd` plus argument; GTKWave is us
 
 | Path | Role |
 |------|------|
+| `src/sync_fifo.v` | Parameterized synchronous FIFO |
 | `src/cxl_ucie_bridge.v` | Bridge RTL |
 | `src/tb_cxl_ucie_bridge.v` | Testbench |
 | `test/Makefile` | Simulation and waveform targets |

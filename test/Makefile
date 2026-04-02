@@ -6,7 +6,7 @@ BUILD_DIR := build
 SRC_DIR   := ../src
 VCD       := $(BUILD_DIR)/waves.vcd
 
-SOURCES := $(SRC_DIR)/cxl_ucie_bridge.v $(SRC_DIR)/tb_cxl_ucie_bridge.v
+SOURCES := $(SRC_DIR)/sync_fifo.v $(SRC_DIR)/cxl_ucie_bridge.v $(SRC_DIR)/tb_cxl_ucie_bridge.v
 OUT     := $(BUILD_DIR)/tb.out
 
 .PHONY: all run sim compile vcd gtkwave clean
