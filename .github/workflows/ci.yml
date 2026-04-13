@@ -1,7 +1,11 @@
-# Simulation (Icarus), lint (Verilator), bounded formal (SymbiYosys via OSS CAD Suite).
+# Simulation (Icarus), lint (Verilator), formal (SymbiYosys via OSS CAD Suite).
 name: CI
 
 on: [push, pull_request]
+
+env:
+  # Pin OSS CAD Suite for reproducible formal CI; bump when upgrading tools.
+  OSS_CAD_SUITE_VERSION: "2026-04-13"
 
 jobs:
   sim:
@@ -30,7 +34,7 @@ jobs:
 
       - name: Lint RTL (no testbench)
         run: |
-          verilator --lint-only -Wall -Wno-DECLFILENAME -top-module cxl_ucie_bridge \
+          verilator --lint-only -Wall -top-module cxl_ucie_bridge \
             src/sync_fifo.v src/cxl_ucie_bridge.v
 
   formal:
@@ -41,7 +45,8 @@ jobs:
       - uses: YosysHQ/setup-oss-cad-suite@v4
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
+          version: ${{ env.OSS_CAD_SUITE_VERSION }}
 
-      - name: Bounded BMC (sync_fifo)
+      - name: SymbiYosys formal (bmc + cover, sync_fifo)
         working-directory: formal
         run: sby -f sync_fifo.sby

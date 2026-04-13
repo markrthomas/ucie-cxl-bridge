@@ -2,6 +2,12 @@
 sim/
 test/build/
 doc/build/
+
+# SymbiYosys (default workdirs next to each .sby, e.g. formal/sync_fifo_bmc/)
+formal/*_bmc/
+formal/*_cover/
+formal/*_prove/
+formal/*_live/
 work/
 *.log
 *.wlf

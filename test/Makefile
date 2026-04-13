@@ -38,7 +38,7 @@ $(BUILD_DIR):
 
 # Verilator second-opinion lint (from repo root paths).
 lint:
-	cd .. && verilator --lint-only -Wall -Wno-DECLFILENAME -top-module cxl_ucie_bridge \
+	cd .. && verilator --lint-only -Wall -top-module cxl_ucie_bridge \
 		src/sync_fifo.v src/cxl_ucie_bridge.v
 
 clean:

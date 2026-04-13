@@ -22,6 +22,8 @@ Baseline dual-FIFO streaming shell, simulation CI, optional Verilator lint, boun
 
 ## Quick start
 
-- **Linux / WSL:** `cd test && make clean && make && make stress` (optional: `make lint` for Verilator). Example native-WSL clone (same commands; often faster than under `/mnt/c/...`): `/home/markt/proj/ucie-cxl-bridge`.
-- **Windows (PowerShell):** `cd test; .\run_sim.ps1` (requires `iverilog` and `vvp` on `PATH`)
+- **Linux / WSL:** `cd test && make clean && make && make stress` (optional: `make lint` for Verilator). A checkout **outside** `/mnt/c/...` under native WSL (for example `~/proj/ucie-cxl-bridge`) is often faster; commands are unchanged.
+- **Windows (PowerShell):** `cd test; .\run_sim.ps1` (requires `iverilog` and `vvp` on `PATH`; optional `.\run_sim.ps1 lint` if Verilator is installed).
+
+More detail (formal runs, CI, native WSL): [CONTRIBUTING.md](CONTRIBUTING.md).
 

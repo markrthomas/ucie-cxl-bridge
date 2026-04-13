@@ -102,6 +102,7 @@ Optional waveform dumps are enabled with the `+vcd` plus argument; GTKWave is us
 | `formal/sync_fifo.sby` | SymbiYosys bounded BMC for `sync_fifo` (requires `sby`, e.g. OSS CAD Suite) |
 | `doc/design-spec.md` | This specification (source) |
 | `doc/Makefile` | PDF build for this document |
+| `CONTRIBUTING.md` | Simulation, formal, and CI notes for contributors |
 
 # 8. Roadmap (phased milestones)
 
