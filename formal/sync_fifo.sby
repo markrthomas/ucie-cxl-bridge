@@ -11,7 +11,10 @@ cover: depth 72
 [engines]
 smtbmc
 
+[files]
+../src/sync_fifo.v
+
 [script]
-read_verilog -sv -DFORMAL ../src/sync_fifo.v
+read_verilog -sv -DFORMAL sync_fifo.v
 prep -top sync_fifo
 async2sync

@@ -12,7 +12,7 @@ Optional Verilator lint (from `test/`): `make lint` (expects `verilator` on `PAT
 
 ## Formal verification
 
-Bounded **bmc** and **cover** for `sync_fifo` are defined in `formal/sync_fifo.sby`. Locally you need **SymbiYosys** (`sby`) and solvers (for example via [OSS CAD Suite](https://github.com/YosysHQ/oss-cad-suite-build)):
+Bounded **bmc** and **cover** for `sync_fifo` are defined in `formal/sync_fifo.sby` (RTL is pulled in via the `[files]` section so paths work inside each task workdir). Locally you need **SymbiYosys** (`sby`) and solvers (for example via [OSS CAD Suite](https://github.com/YosysHQ/oss-cad-suite-build)):
 
 ```bash
 cd formal
