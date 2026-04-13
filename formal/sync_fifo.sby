@@ -1,0 +1,17 @@
+[tasks]
+bmc
+cover
+
+[options]
+bmc: mode bmc
+bmc: depth 48
+cover: mode cover
+cover: depth 72
+
+[engines]
+smtbmc
+
+[script]
+read_verilog -sv -DFORMAL ../src/sync_fifo.v
+prep -top sync_fifo
+async2sync

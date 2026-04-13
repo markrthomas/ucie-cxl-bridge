@@ -1,12 +1,13 @@
-# Run Icarus Verilog simulation on every push and pull request.
+# Simulation (Icarus), lint (Verilator), bounded formal (SymbiYosys via OSS CAD Suite).
 name: CI
 
 on: [push, pull_request]
+
 jobs:
   sim:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install Icarus Verilog
         run: |
@@ -16,3 +17,31 @@ jobs:
       - name: Simulation (default + heavy stress)
         working-directory: test
         run: make clean && make && make stress
+
+  verilator:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Verilator
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y verilator
+
+      - name: Lint RTL (no testbench)
+        run: |
+          verilator --lint-only -Wall -Wno-DECLFILENAME -top-module cxl_ucie_bridge \
+            src/sync_fifo.v src/cxl_ucie_bridge.v
+
+  formal:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: YosysHQ/setup-oss-cad-suite@v4
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Bounded BMC (sync_fifo)
+        working-directory: formal
+        run: sby -f sync_fifo.sby

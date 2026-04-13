@@ -59,6 +59,17 @@ module tb_cxl_ucie_bridge;
     .cxl_out_ready(cxl_out_ready)
   );
 
+  cxl_ucie_bridge_chk #(.WIDTH(W)) u_chk (
+    .clk(clk),
+    .rst_n(rst_n),
+    .ucie_out_valid(ucie_out_valid),
+    .ucie_out_data(ucie_out_data),
+    .ucie_out_ready(ucie_out_ready),
+    .cxl_out_valid(cxl_out_valid),
+    .cxl_out_data(cxl_out_data),
+    .cxl_out_ready(cxl_out_ready)
+  );
+
   initial begin
     if ($test$plusargs("vcd")) begin
       $dumpfile("build/waves.vcd");

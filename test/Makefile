@@ -6,10 +6,10 @@ BUILD_DIR := build
 SRC_DIR   := ../src
 VCD       := $(BUILD_DIR)/waves.vcd
 
-SOURCES := $(SRC_DIR)/sync_fifo.v $(SRC_DIR)/cxl_ucie_bridge.v $(SRC_DIR)/tb_cxl_ucie_bridge.v
+SOURCES := $(SRC_DIR)/sync_fifo.v $(SRC_DIR)/cxl_ucie_bridge.v $(SRC_DIR)/cxl_ucie_bridge_chk.v $(SRC_DIR)/tb_cxl_ucie_bridge.v
 OUT     := $(BUILD_DIR)/tb.out
 
-.PHONY: all run sim compile stress vcd gtkwave clean
+.PHONY: all run sim compile stress vcd gtkwave lint clean
 
 all: run
 
@@ -31,10 +31,15 @@ gtkwave: vcd
 	gtkwave $(VCD)
 
 $(OUT): $(SOURCES) | $(BUILD_DIR)
-	iverilog -o $@ $(SOURCES)
+	iverilog -g2005-sv -o $@ $(SOURCES)
 
 $(BUILD_DIR):
 	mkdir -p $(BUILD_DIR)
+
+# Verilator second-opinion lint (from repo root paths).
+lint:
+	cd .. && verilator --lint-only -Wall -Wno-DECLFILENAME -top-module cxl_ucie_bridge \
+		src/sync_fifo.v src/cxl_ucie_bridge.v
 
 clean:
 	rm -rf $(BUILD_DIR)

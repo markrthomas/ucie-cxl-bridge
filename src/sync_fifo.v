@@ -16,15 +16,23 @@ module sync_fifo #(
   output wire [WIDTH-1:0]      rd_data
 );
 
+  generate
+    if (DEPTH < 1 || (DEPTH & (DEPTH - 1)) != 0) begin : gen_depth_check
+      initial $fatal(1, "sync_fifo: DEPTH must be a power of 2 and >= 1");
+    end
+  endgenerate
+
   localparam integer ADDR_W = $clog2(DEPTH);
+  // Sized depth for comparisons (avoids tool-specific width mismatch on count).
+  localparam [ADDR_W:0] DEPTH_CNT = DEPTH[ADDR_W:0];
 
   reg [WIDTH-1:0] mem[0:DEPTH-1];
   reg [ADDR_W-1:0] wr_ptr;
   reg [ADDR_W-1:0] rd_ptr;
   reg [ADDR_W:0] count;
 
-  assign full  = (count == DEPTH);
-  assign empty = (count == 0);
+  assign full  = (count == DEPTH_CNT);
+  assign empty = (count == {(ADDR_W + 1) {1'b0}});
   assign rd_data = mem[rd_ptr];
 
   wire wr = wr_en && !full;
@@ -48,5 +56,24 @@ module sync_fifo #(
         rd_ptr <= rd_ptr + 1'b1;
     end
   end
+
+`ifdef FORMAL
+  // Bounded-model properties (SymbiYosys / Yosys); not enabled for normal simulation.
+  always_ff @(posedge clk) begin
+    if (rst_n) begin
+      assert (count <= DEPTH_CNT);
+      assert (count >= {(ADDR_W + 1) {1'b0}});
+    end
+  end
+
+  // Reachability (cover mode): show FIFO can fill, drain partially, and do same-cycle wr+rd.
+  always_ff @(posedge clk) begin
+    if (rst_n) begin
+      cover (full);
+      cover (wr && rd);
+      cover ((count > {(ADDR_W + 1) {1'b0}}) && (count < DEPTH_CNT));
+    end
+  end
+`endif
 
 endmodule

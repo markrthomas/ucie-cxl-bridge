@@ -81,9 +81,11 @@ Each direction uses a **valid/ready** interface with a synchronous FIFO (first-w
 # 6. Verification
 
 - **Simulator:** Icarus Verilog (`iverilog` compilation, `vvp` execution).
-- **Testbench:** `tb_cxl_ucie_bridge` runs a short smoke test (one flit per direction), then stress with concurrent traffic, random sink `ready`, bursts, scoreboard checks, and a drain phase.
+- **Lint (second opinion):** Verilator `--lint-only` on `sync_fifo` + `cxl_ucie_bridge` (CI), without elaborating the testbench.
+- **Formal:** SymbiYosys (`sby`) on `sync_fifo`: bounded **BMC** (safety asserts on `count`), **cover** reachability (full, simultaneous read/write, mid occupancy), and `async2sync` after `prep` for active-low asynchronous reset. Assertions and covers are `FORMAL`-guarded in RTL (see `formal/sync_fifo.sby`). CI uses the OSS CAD Suite installer action so `sby` and solvers are available without distro-specific packages.
+- **Testbench:** `tb_cxl_ucie_bridge` runs a short smoke test (one flit per direction), then stress with concurrent traffic, random sink `ready`, bursts, scoreboard checks, and a drain phase. The `cxl_ucie_bridge_chk` module checks egress **ready/valid** stability rules during simulation.
 - **Scoreboard behavior:** The testbench uses a reusable per-cycle scoreboard step and explicitly accounts for transfers on the stress-to-drain boundary clock edge before disabling new source traffic.
-- **Automation:** The `test/` directory provides a `Makefile` with targets `run`, `vcd` (optional waveform dump to `build/waves.vcd`), and `gtkwave` (regenerate VCD and open GTKWave when available).
+- **Automation:** The `test/` directory provides a `Makefile` with targets `run`, `vcd` (optional waveform dump to `build/waves.vcd`), and `gtkwave` (regenerate VCD and open GTKWave when available). On Windows, `test/run_sim.ps1` runs the same compile and `vvp` steps when `iverilog`/`vvp` are on `PATH`.
 
 Optional waveform dumps are enabled with the `+vcd` plus argument; GTKWave is used for inspection.
 
@@ -93,19 +95,31 @@ Optional waveform dumps are enabled with the `+vcd` plus argument; GTKWave is us
 |------|------|
 | `src/sync_fifo.v` | Parameterized synchronous FIFO |
 | `src/cxl_ucie_bridge.v` | Bridge RTL |
+| `src/cxl_ucie_bridge_chk.v` | Simulation checks (egress stability / no valid retraction) |
 | `src/tb_cxl_ucie_bridge.v` | Testbench |
 | `test/Makefile` | Simulation and waveform targets |
+| `test/run_sim.ps1` | Windows-oriented compile + `vvp` helper |
+| `formal/sync_fifo.sby` | SymbiYosys bounded BMC for `sync_fifo` (requires `sby`, e.g. OSS CAD Suite) |
 | `doc/design-spec.md` | This specification (source) |
 | `doc/Makefile` | PDF build for this document |
 
-# 8. Future work
+# 8. Roadmap (phased milestones)
+
+Work is expected to proceed roughly in the following order; later phases depend on chosen protocol profiles and tooling.
+
+1. **Transport shell (current)** — Width-parameterized streaming paths, synchronous FIFO buffering, ready/valid checks, simulation and bounded formal on the FIFO, second-opinion lint (Verilator).
+2. **Typed traffic** — Replace opaque flits with message or TLP-like structs aligned to CXL.io / cache / mem and the selected UCIe adapter profile; expand scoreboarding and assertions accordingly.
+3. **Flow control and ordering** — Credit counters, ordering domains, and directed plus constrained-random verification; consider **UVM** or another advanced methodology when stimulus and coverage closure justify the overhead.
+4. **Bring-up and non-ideal behavior** — Reset sequencing, link readiness gates, error injection, and (when needed) **clocking / CDC** documentation and RTL.
+
+# 9. Future work (detail)
 
 - Replace generic flits with **typed CXL and UCIe message** representations aligned to chosen specification revisions.
 - Implement **credit** and **ordering** state machines and verify with directed and constrained-random stimulus (tooling beyond iverilog may be required for advanced methodologies).
 - Document **reset and link bring-up** sequences and corresponding RTL interfaces.
 - Expand the design specification with **timing, clocking, and CDC** assumptions as the design adds multiple clock domains or PHY-facing logic.
 
-# 9. Document control
+# 10. Document control
 
 | Item | Value |
 |------|--------|
