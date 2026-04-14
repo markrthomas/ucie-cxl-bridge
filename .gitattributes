@@ -1,0 +1,2 @@
+# Shell scripts must use LF so WSL/bash can run them from /mnt/c checkouts.
+*.sh text eol=lf

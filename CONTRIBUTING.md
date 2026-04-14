@@ -28,3 +28,22 @@ GitHub Actions runs Icarus simulation, Verilator `--lint-only`, and `sby` on `sy
 ## Native WSL vs `/mnt/c`
 
 Keeping a clone on the Linux filesystem (for example under `$HOME/proj/`) avoids cross-filesystem overhead when editing from Windows under `/mnt/c/...`. Either tree is fine; use the same `make` targets from `test/`.
+
+## OSS CAD Suite in WSL (`~/oss-cad-suite`)
+
+Download `oss-cad-suite-linux-x64-*.tgz` from [oss-cad-suite-build releases](https://github.com/YosysHQ/oss-cad-suite-build/releases), place it in `$HOME`, then extract:
+
+```bash
+cd ~
+tar -xzf oss-cad-suite-linux-x64-*.tgz   # creates ~/oss-cad-suite/
+```
+
+Add to `~/.bashrc` (or run once: `bash scripts/wsl-append-oss-bashrc.sh` from this repo on a Unix-line-ending checkout):
+
+```bash
+if [ -f "$HOME/oss-cad-suite/environment" ]; then
+  source "$HOME/oss-cad-suite/environment"
+fi
+```
+
+New shells then get `yosys`, `sby`, `iverilog`, `vvp`, `verilator`, etc. on `PATH`. For the current session: `source ~/oss-cad-suite/environment`.
