@@ -19,7 +19,7 @@ cd formal
 sby -f sync_fifo.sby
 ```
 
-Workdirs such as `formal/sync_fifo_bmc/` are listed in `.gitignore`; do not commit them.
+SymbiYosys workdirs under `formal/` (e.g. `formal/sync_fifo/`, `formal/sync_fifo_bmc/`, `formal/sync_fifo_cover/`) are listed in `.gitignore`; do not commit them.
 
 ## Continuous integration
 
