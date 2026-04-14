@@ -49,4 +49,24 @@ jobs:
 
       - name: SymbiYosys formal (bmc + cover, sync_fifo)
         working-directory: formal
-        run: sby -f sync_fifo.sby
+        run: |
+          set -euo pipefail
+          test -r "${GITHUB_WORKSPACE}/src/sync_fifo.v"
+          python3 <<'PY'
+          import os
+          from pathlib import Path
+          root = Path(os.environ["GITHUB_WORKSPACE"])
+          rtl = root / "src" / "sync_fifo.v"
+          assert rtl.is_file(), rtl
+          src = root / "formal" / "sync_fifo.sby"
+          out = root / "formal" / "sync_fifo_ci.sby"
+          old = "read_verilog -sv -DFORMAL ../../../src/sync_fifo.v"
+          new = f"read_verilog -sv -DFORMAL {rtl}"
+          text = src.read_text()
+          if old not in text:
+              raise SystemExit(f"expected snippet not in {src}: {old!r}")
+          out.write_text(text.replace(old, new, 1))
+          print("wrote", out)
+          print(new)
+          PY
+          sby -f sync_fifo_ci.sby

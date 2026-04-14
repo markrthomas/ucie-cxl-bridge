@@ -19,7 +19,9 @@ cd formal
 sby -f sync_fifo.sby
 ```
 
-SymbiYosys workdirs under `formal/` (e.g. `formal/sync_fifo/`, `formal/sync_fifo_bmc/`, `formal/sync_fifo_cover/`) are listed in `.gitignore`; do not commit them.
+**CI vs local:** GitHub Actions generates `formal/sync_fifo_ci.sby` from `sync_fifo.sby`, replacing the `read_verilog … ../../../src/sync_fifo.v` line with an **absolute** path under `$GITHUB_WORKSPACE`, so formal does not depend on `sby` task-directory depth on the runner.
+
+SymbiYosys workdirs under `formal/` (e.g. `formal/sync_fifo/`, `formal/sync_fifo_bmc/`, `formal/sync_fifo_cover/`, and `sync_fifo_ci_*` from CI) are listed in `.gitignore`; do not commit them.
 
 ## Continuous integration
 
