@@ -58,9 +58,16 @@ module sync_fifo #(
   end
 
 `ifdef FORMAL
+  // BMC must not start from physically impossible register values (unconstrained init).
+  initial begin
+    assume (count <= DEPTH_CNT);
+    assume (wr_ptr < DEPTH);
+    assume (rd_ptr < DEPTH);
+  end
+
   // Bounded-model properties (SymbiYosys / Yosys); not enabled for normal simulation.
   always_ff @(posedge clk) begin
-    if (rst_n) begin
+    if (rst_n === 1'b1) begin
       assert (count <= DEPTH_CNT);
       assert (count >= {(ADDR_W + 1) {1'b0}});
     end
@@ -68,7 +75,7 @@ module sync_fifo #(
 
   // Reachability (cover mode): show FIFO can fill, drain partially, and do same-cycle wr+rd.
   always_ff @(posedge clk) begin
-    if (rst_n) begin
+    if (rst_n === 1'b1) begin
       cover (full);
       cover (wr && rd);
       cover ((count > {(ADDR_W + 1) {1'b0}}) && (count < DEPTH_CNT));
