@@ -31,14 +31,14 @@ gtkwave: vcd
 	gtkwave $(VCD)
 
 $(OUT): $(SOURCES) | $(BUILD_DIR)
-	iverilog -g2005-sv -o $@ $(SOURCES)
+	iverilog -g2005-sv -I$(SRC_DIR) -o $@ $(SOURCES)
 
 $(BUILD_DIR):
 	mkdir -p $(BUILD_DIR)
 
 # Verilator second-opinion lint (from repo root paths).
 lint:
-	cd .. && verilator --lint-only -Wall -top-module cxl_ucie_bridge \
+	cd .. && verilator -Isrc --lint-only -Wall -top-module cxl_ucie_bridge \
 		src/sync_fifo.v src/cxl_ucie_bridge.v
 
 clean:

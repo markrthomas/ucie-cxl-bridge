@@ -11,7 +11,7 @@ Set-Location $here
 $root = Split-Path $here -Parent
 
 if ($args.Count -ge 1 -and ($args[0] -eq "lint" -or $args[0] -eq "-lint")) {
-  & verilator --lint-only -Wall -top-module cxl_ucie_bridge `
+  & verilator "-I$($root)\src" --lint-only -Wall -top-module cxl_ucie_bridge `
     (Join-Path $root "src\sync_fifo.v") `
     (Join-Path $root "src\cxl_ucie_bridge.v")
   exit $LASTEXITCODE
@@ -29,7 +29,7 @@ $sources = @(
   (Join-Path $src "tb_cxl_ucie_bridge.v")
 )
 
-& iverilog -g2005-sv -o $out @sources
+& iverilog -g2005-sv "-I$src" -o $out @sources
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 $vvpArgs = $args

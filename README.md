@@ -18,7 +18,13 @@ Verification today uses **Icarus Verilog** (`iverilog` / `vvp`) with a directed 
 TBD
 
 ## Status
-Baseline dual-FIFO streaming shell, simulation CI, optional Verilator lint, bounded formal (BMC + cover) on `sync_fifo`, Windows `test/run_sim.ps1` helper.
+Phase 1 protocol-bearing model: buffered translation for a narrowed first target, with `CXL.io`-style requests mapped onto a simplified UCIe adapter request packet and UCIe adapter completions mapped back into `CXL.io`-style completions. Simulation CI, optional Verilator lint, bounded formal (BMC + cover) on `sync_fifo`, Windows `test/run_sim.ps1` helper.
+
+## Current Scope
+- `CXL -> UCIe`: simplified `CXL.io` request packet translation
+- `UCIe -> CXL`: simplified UCIe adapter completion translation
+- Shared packet-field definitions live in `src/cxl_ucie_bridge_defs.vh`
+- Full `CXL.cache` / `CXL.mem` semantics, credits, and ordering policy remain future work
 
 ## Quick start
 

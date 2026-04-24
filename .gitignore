@@ -29,3 +29,6 @@ work/
 # editor
 .vscode/
 *.swp
+
+# local agent metadata
+.codex

@@ -34,7 +34,7 @@ jobs:
 
       - name: Lint RTL (no testbench)
         run: |
-          verilator --lint-only -Wall -top-module cxl_ucie_bridge \
+          verilator -Isrc --lint-only -Wall -top-module cxl_ucie_bridge \
             src/sync_fifo.v src/cxl_ucie_bridge.v
 
   formal:
