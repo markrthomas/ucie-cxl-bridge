@@ -93,6 +93,7 @@ module tb_cxl_ucie_bridge;
     end
   endfunction
 
+  // Gold model: mirrors translate_cxl_to_ucie in the bridge RTL.
   function automatic [63:0] expect_ucie_from_cxl;
     input [63:0] cxl_pkt;
     reg [63:0] raw_pkt;
@@ -116,6 +117,66 @@ module tb_cxl_ucie_bridge;
           raw_pkt[PKT_MISC_MSB:PKT_MISC_LSB] = bridge_checksum(raw_pkt);
           expect_ucie_from_cxl = raw_pkt;
         end
+        CXL_PKT_KIND_MEM_RD: begin
+          attr = cxl_pkt[PKT_AUX_MSB:PKT_AUX_LSB] ^
+                 cxl_pkt[PKT_MISC_MSB:PKT_MISC_LSB];
+          raw_pkt = pack_ucie_ad_req(
+            UCIE_MSG_MEM_RD,
+            cxl_pkt[PKT_TAG_MSB:PKT_TAG_LSB],
+            cxl_pkt[PKT_ADDR_MSB:PKT_ADDR_LSB],
+            cxl_pkt[PKT_LEN_MSB:PKT_LEN_LSB],
+            cxl_pkt[PKT_ID_MSB:PKT_ID_LSB],
+            attr,
+            8'h00
+          );
+          raw_pkt[PKT_MISC_MSB:PKT_MISC_LSB] = bridge_checksum(raw_pkt);
+          expect_ucie_from_cxl = raw_pkt;
+        end
+        CXL_PKT_KIND_MEM_WR: begin
+          attr = cxl_pkt[PKT_AUX_MSB:PKT_AUX_LSB] ^
+                 cxl_pkt[PKT_MISC_MSB:PKT_MISC_LSB];
+          raw_pkt = pack_ucie_ad_req(
+            UCIE_MSG_MEM_WR,
+            cxl_pkt[PKT_TAG_MSB:PKT_TAG_LSB],
+            cxl_pkt[PKT_ADDR_MSB:PKT_ADDR_LSB],
+            cxl_pkt[PKT_LEN_MSB:PKT_LEN_LSB],
+            cxl_pkt[PKT_ID_MSB:PKT_ID_LSB],
+            attr,
+            8'h00
+          );
+          raw_pkt[PKT_MISC_MSB:PKT_MISC_LSB] = bridge_checksum(raw_pkt);
+          expect_ucie_from_cxl = raw_pkt;
+        end
+        CXL_PKT_KIND_CACHE_RD: begin
+          attr = cxl_pkt[PKT_AUX_MSB:PKT_AUX_LSB] ^
+                 cxl_pkt[PKT_MISC_MSB:PKT_MISC_LSB];
+          raw_pkt = pack_ucie_ad_req(
+            UCIE_MSG_CACHE_RD,
+            cxl_pkt[PKT_TAG_MSB:PKT_TAG_LSB],
+            cxl_pkt[PKT_ADDR_MSB:PKT_ADDR_LSB],
+            cxl_pkt[PKT_LEN_MSB:PKT_LEN_LSB],
+            cxl_pkt[PKT_ID_MSB:PKT_ID_LSB],
+            attr,
+            8'h00
+          );
+          raw_pkt[PKT_MISC_MSB:PKT_MISC_LSB] = bridge_checksum(raw_pkt);
+          expect_ucie_from_cxl = raw_pkt;
+        end
+        CXL_PKT_KIND_CACHE_WR: begin
+          attr = cxl_pkt[PKT_AUX_MSB:PKT_AUX_LSB] ^
+                 cxl_pkt[PKT_MISC_MSB:PKT_MISC_LSB];
+          raw_pkt = pack_ucie_ad_req(
+            UCIE_MSG_CACHE_WR,
+            cxl_pkt[PKT_TAG_MSB:PKT_TAG_LSB],
+            cxl_pkt[PKT_ADDR_MSB:PKT_ADDR_LSB],
+            cxl_pkt[PKT_LEN_MSB:PKT_LEN_LSB],
+            cxl_pkt[PKT_ID_MSB:PKT_ID_LSB],
+            attr,
+            8'h00
+          );
+          raw_pkt[PKT_MISC_MSB:PKT_MISC_LSB] = bridge_checksum(raw_pkt);
+          expect_ucie_from_cxl = raw_pkt;
+        end
         default: begin
           raw_pkt = {UCIE_PKT_KIND_ERROR, 4'h0, cxl_pkt[PKT_TAG_MSB:PKT_TAG_LSB],
                      16'h0000, 8'h00, cxl_pkt[PKT_ID_MSB:PKT_ID_LSB],
@@ -127,6 +188,7 @@ module tb_cxl_ucie_bridge;
     end
   endfunction
 
+  // Gold model: mirrors translate_ucie_to_cxl in the bridge RTL.
   function automatic [63:0] expect_cxl_from_ucie;
     input [63:0] ucie_pkt;
     reg [63:0] chk_pkt;
@@ -136,14 +198,44 @@ module tb_cxl_ucie_bridge;
       case (ucie_pkt[PKT_KIND_MSB:PKT_KIND_LSB])
         UCIE_PKT_KIND_AD_CPL:
           if (ucie_pkt[PKT_MISC_MSB:PKT_MISC_LSB] == bridge_checksum(chk_pkt))
-          expect_cxl_from_ucie = pack_cxl_io_cpl(
-            ucie_pkt[PKT_CODE_MSB:PKT_CODE_LSB],
-            ucie_pkt[PKT_TAG_MSB:PKT_TAG_LSB],
-            ucie_pkt[PKT_ADDR_MSB:PKT_ADDR_LSB],
-            ucie_pkt[PKT_LEN_MSB:PKT_LEN_LSB],
-            ucie_pkt[PKT_ID_MSB:PKT_ID_LSB],
-            ucie_pkt[PKT_AUX_MSB:PKT_AUX_LSB]
-          );
+            expect_cxl_from_ucie = pack_cxl_io_cpl(
+              ucie_pkt[PKT_CODE_MSB:PKT_CODE_LSB],
+              ucie_pkt[PKT_TAG_MSB:PKT_TAG_LSB],
+              ucie_pkt[PKT_ADDR_MSB:PKT_ADDR_LSB],
+              ucie_pkt[PKT_LEN_MSB:PKT_LEN_LSB],
+              ucie_pkt[PKT_ID_MSB:PKT_ID_LSB],
+              ucie_pkt[PKT_AUX_MSB:PKT_AUX_LSB]
+            );
+          else
+            expect_cxl_from_ucie = {CXL_PKT_KIND_INVALID, 4'h0,
+                                    ucie_pkt[PKT_TAG_MSB:PKT_TAG_LSB], 16'h0000,
+                                    8'h00, ucie_pkt[PKT_ID_MSB:PKT_ID_LSB],
+                                    8'h00, 8'h00};
+        UCIE_PKT_KIND_MEM_CPL:
+          if (ucie_pkt[PKT_MISC_MSB:PKT_MISC_LSB] == bridge_checksum(chk_pkt))
+            expect_cxl_from_ucie = pack_cxl_mem_cpl(
+              ucie_pkt[PKT_CODE_MSB:PKT_CODE_LSB],
+              ucie_pkt[PKT_TAG_MSB:PKT_TAG_LSB],
+              ucie_pkt[PKT_ADDR_MSB:PKT_ADDR_LSB],
+              ucie_pkt[PKT_LEN_MSB:PKT_LEN_LSB],
+              ucie_pkt[PKT_ID_MSB:PKT_ID_LSB],
+              ucie_pkt[PKT_AUX_MSB:PKT_AUX_LSB]
+            );
+          else
+            expect_cxl_from_ucie = {CXL_PKT_KIND_INVALID, 4'h0,
+                                    ucie_pkt[PKT_TAG_MSB:PKT_TAG_LSB], 16'h0000,
+                                    8'h00, ucie_pkt[PKT_ID_MSB:PKT_ID_LSB],
+                                    8'h00, 8'h00};
+        UCIE_PKT_KIND_CACHE_CPL:
+          if (ucie_pkt[PKT_MISC_MSB:PKT_MISC_LSB] == bridge_checksum(chk_pkt))
+            expect_cxl_from_ucie = pack_cxl_cache_cpl(
+              ucie_pkt[PKT_CODE_MSB:PKT_CODE_LSB],
+              ucie_pkt[PKT_TAG_MSB:PKT_TAG_LSB],
+              ucie_pkt[PKT_ADDR_MSB:PKT_ADDR_LSB],
+              ucie_pkt[PKT_LEN_MSB:PKT_LEN_LSB],
+              ucie_pkt[PKT_ID_MSB:PKT_ID_LSB],
+              ucie_pkt[PKT_AUX_MSB:PKT_AUX_LSB]
+            );
           else
             expect_cxl_from_ucie = {CXL_PKT_KIND_INVALID, 4'h0,
                                     ucie_pkt[PKT_TAG_MSB:PKT_TAG_LSB], 16'h0000,
@@ -230,7 +322,7 @@ module tb_cxl_ucie_bridge;
     repeat (4) @(posedge clk);
     rst_n = 1'b1;
 
-    // --- Smoke: single beat each direction (same as original sanity) ---
+    // --- Smoke 1: CXL.io IO_REQ (original sanity) ---
     @(posedge clk);
     cxl_in_data    = pack_cxl_io_req(CXL_IO_OP_MEM_RD, 8'h3c, 16'hbeef, 8'h04, 8'ha1, 8'h0f);
     cxl_in_valid   = 1'b1;
@@ -242,7 +334,7 @@ module tb_cxl_ucie_bridge;
     wait (ucie_out_valid);
     @(posedge clk);
     if (ucie_out_data !== expect_ucie_from_cxl(pack_cxl_io_req(CXL_IO_OP_MEM_RD, 8'h3c, 16'hbeef, 8'h04, 8'ha1, 8'h0f))) begin
-      $display("FAIL: smoke ucie_out_data got %h", ucie_out_data);
+      $display("FAIL: smoke io_req ucie_out_data got %h", ucie_out_data);
       $finish(1);
     end
 
@@ -258,8 +350,100 @@ module tb_cxl_ucie_bridge;
     wait (cxl_out_valid);
     @(posedge clk);
     if (cxl_out_data !== expect_cxl_from_ucie(ucie_in_data)) begin
-      $display("FAIL: smoke cxl_out_data got %h", cxl_out_data);
+      $display("FAIL: smoke ad_cpl cxl_out_data got %h", cxl_out_data);
       $finish(1);
+    end
+
+    // --- Smoke 2: new packet kinds ---
+    begin : blk_smoke_new_kinds
+      reg [W-1:0] upkt;
+
+      // CXL.mem read
+      @(posedge clk);
+      cxl_in_data  = pack_cxl_mem_rd(4'h1, 8'h11, 16'h2000, 8'h08, 8'hd4, 8'hf5);
+      cxl_in_valid = 1'b1; ucie_out_ready = 1'b1;
+      @(posedge clk);
+      while (!(cxl_in_valid && cxl_in_ready)) @(posedge clk);
+      cxl_in_valid = 1'b0;
+      wait (ucie_out_valid); @(posedge clk);
+      if (ucie_out_data !== expect_ucie_from_cxl(pack_cxl_mem_rd(4'h1, 8'h11, 16'h2000, 8'h08, 8'hd4, 8'hf5))) begin
+        $display("FAIL: smoke mem_rd got %h", ucie_out_data); $finish(1);
+      end
+
+      // CXL.mem write
+      @(posedge clk);
+      cxl_in_data  = pack_cxl_mem_wr(4'h2, 8'h22, 16'h4000, 8'h04, 8'he5, 8'ha3);
+      cxl_in_valid = 1'b1;
+      @(posedge clk);
+      while (!(cxl_in_valid && cxl_in_ready)) @(posedge clk);
+      cxl_in_valid = 1'b0;
+      wait (ucie_out_valid); @(posedge clk);
+      if (ucie_out_data !== expect_ucie_from_cxl(pack_cxl_mem_wr(4'h2, 8'h22, 16'h4000, 8'h04, 8'he5, 8'ha3))) begin
+        $display("FAIL: smoke mem_wr got %h", ucie_out_data); $finish(1);
+      end
+
+      // CXL.cache read
+      @(posedge clk);
+      cxl_in_data  = pack_cxl_cache_rd(4'h0, 8'h33, 16'h8000, 8'h02, 8'hf6, 8'h77);
+      cxl_in_valid = 1'b1;
+      @(posedge clk);
+      while (!(cxl_in_valid && cxl_in_ready)) @(posedge clk);
+      cxl_in_valid = 1'b0;
+      wait (ucie_out_valid); @(posedge clk);
+      if (ucie_out_data !== expect_ucie_from_cxl(pack_cxl_cache_rd(4'h0, 8'h33, 16'h8000, 8'h02, 8'hf6, 8'h77))) begin
+        $display("FAIL: smoke cache_rd got %h", ucie_out_data); $finish(1);
+      end
+
+      // CXL.cache write
+      @(posedge clk);
+      cxl_in_data  = pack_cxl_cache_wr(4'h3, 8'h44, 16'hc000, 8'h01, 8'ha7, 8'h5b);
+      cxl_in_valid = 1'b1;
+      @(posedge clk);
+      while (!(cxl_in_valid && cxl_in_ready)) @(posedge clk);
+      cxl_in_valid = 1'b0;
+      wait (ucie_out_valid); @(posedge clk);
+      if (ucie_out_data !== expect_ucie_from_cxl(pack_cxl_cache_wr(4'h3, 8'h44, 16'hc000, 8'h01, 8'ha7, 8'h5b))) begin
+        $display("FAIL: smoke cache_wr got %h", ucie_out_data); $finish(1);
+      end
+
+      // UCIe MEM_CPL -> CXL MEM_CPL
+      upkt = pack_ucie_mem_cpl(UCIE_CPL_SC, 8'h11, 16'h0800, 8'h08, 8'hd4, 8'hf5, 8'h00);
+      upkt[PKT_MISC_MSB:PKT_MISC_LSB] = bridge_checksum(upkt);
+      @(posedge clk);
+      ucie_in_data = upkt; ucie_in_valid = 1'b1; cxl_out_ready = 1'b1;
+      @(posedge clk);
+      while (!(ucie_in_valid && ucie_in_ready)) @(posedge clk);
+      ucie_in_valid = 1'b0;
+      wait (cxl_out_valid); @(posedge clk);
+      if (cxl_out_data !== expect_cxl_from_ucie(upkt)) begin
+        $display("FAIL: smoke mem_cpl got %h", cxl_out_data); $finish(1);
+      end
+
+      // UCIe CACHE_CPL -> CXL CACHE_CPL
+      upkt = pack_ucie_cache_cpl(UCIE_CPL_UR, 8'h33, 16'h0200, 8'h02, 8'hf6, 8'h77, 8'h00);
+      upkt[PKT_MISC_MSB:PKT_MISC_LSB] = bridge_checksum(upkt);
+      @(posedge clk);
+      ucie_in_data = upkt; ucie_in_valid = 1'b1;
+      @(posedge clk);
+      while (!(ucie_in_valid && ucie_in_ready)) @(posedge clk);
+      ucie_in_valid = 1'b0;
+      wait (cxl_out_valid); @(posedge clk);
+      if (cxl_out_data !== expect_cxl_from_ucie(upkt)) begin
+        $display("FAIL: smoke cache_cpl got %h", cxl_out_data); $finish(1);
+      end
+
+      // UCIe AD_CPL with CA status
+      upkt = pack_ucie_ad_cpl(UCIE_CPL_CA, 8'h5a, 16'h0040, 8'h04, 8'hc3, 8'h18, 8'h00);
+      upkt[PKT_MISC_MSB:PKT_MISC_LSB] = bridge_checksum(upkt);
+      @(posedge clk);
+      ucie_in_data = upkt; ucie_in_valid = 1'b1;
+      @(posedge clk);
+      while (!(ucie_in_valid && ucie_in_ready)) @(posedge clk);
+      ucie_in_valid = 1'b0;
+      wait (cxl_out_valid); @(posedge clk);
+      if (cxl_out_data !== expect_cxl_from_ucie(upkt)) begin
+        $display("FAIL: smoke ad_cpl_ca got %h", cxl_out_data); $finish(1);
+      end
     end
 
     // --- Stress: concurrent traffic + random ready ---
@@ -280,7 +464,7 @@ module tb_cxl_ucie_bridge;
       seed           = rnd32(seed);
       cxl_out_ready  <= (seed % 5) != 0;
 
-      // CXL -> UCIe source
+      // CXL -> UCIe source: all packet kinds
       if (cxl_in_valid && cxl_in_ready) begin
         seed = rnd32(seed);
         if ((seed % 4) == 0)
@@ -293,18 +477,27 @@ module tb_cxl_ucie_bridge;
         seed = rnd32(seed);
         if ((seed % 3) != 0) begin
           cxl_in_valid <= 1'b1;
-          cxl_in_data  <= pack_cxl_io_req(
-                           seed[17] ? CXL_IO_OP_MEM_WR : CXL_IO_OP_CFG_RD,
-                           seed[15:8],
-                           seed[31:16],
-                           {6'h0, seed[7:6]},
-                           seed[23:16],
-                           seed[7:0]
-                         );
+          case (seed[20:18] % 5)
+            3'd0: cxl_in_data <= pack_cxl_io_req(
+                                   CXL_IO_OP_CFG_RD, seed[15:8], seed[31:16],
+                                   {6'h0, seed[7:6]}, seed[23:16], seed[7:0]);
+            3'd1: cxl_in_data <= pack_cxl_io_req(
+                                   CXL_IO_OP_MEM_WR, seed[15:8], seed[31:16],
+                                   {6'h0, seed[7:6]}, seed[23:16], seed[7:0]);
+            3'd2: cxl_in_data <= pack_cxl_mem_rd(
+                                   4'h0, seed[15:8], seed[31:16],
+                                   {6'h0, seed[7:6]}, seed[23:16], seed[7:0]);
+            3'd3: cxl_in_data <= pack_cxl_cache_rd(
+                                   4'h0, seed[15:8], seed[31:16],
+                                   {6'h0, seed[7:6]}, seed[23:16], seed[7:0]);
+            default: cxl_in_data <= pack_cxl_cache_wr(
+                                      4'h0, seed[15:8], seed[31:16],
+                                      {6'h0, seed[7:6]}, seed[23:16], seed[7:0]);
+          endcase
         end
       end
 
-      // UCIe -> CXL source (independent pattern)
+      // UCIe -> CXL source: all completion kinds
       if (ucie_in_valid && ucie_in_ready) begin
         seed = rnd32(seed);
         if ((seed % 5) == 0)
@@ -317,24 +510,38 @@ module tb_cxl_ucie_bridge;
         seed = rnd32(seed);
         if ((seed % 4) != 0) begin
           ucie_in_valid <= 1'b1;
-          ucie_in_data  <= pack_ucie_ad_cpl(
-                            seed[16] ? UCIE_CPL_SC : UCIE_CPL_UR,
-                            seed[15:8],
-                            seed[31:16],
-                            {6'h0, seed[7:6]},
-                            seed[23:16],
-                            seed[7:0],
-                            8'h00
-                          );
-          ucie_in_data[PKT_MISC_MSB:PKT_MISC_LSB] <= bridge_checksum(pack_ucie_ad_cpl(
-                                                       seed[16] ? UCIE_CPL_SC : UCIE_CPL_UR,
-                                                       seed[15:8],
-                                                       seed[31:16],
-                                                       {6'h0, seed[7:6]},
-                                                       seed[23:16],
-                                                       seed[7:0],
-                                                       8'h00
-                                                     ));
+          case (seed[19:18] % 3)
+            2'd0: begin
+              ucie_in_data <= pack_ucie_ad_cpl(
+                               seed[16] ? UCIE_CPL_SC : UCIE_CPL_UR,
+                               seed[15:8], seed[31:16], {6'h0, seed[7:6]},
+                               seed[23:16], seed[7:0], 8'h00);
+              ucie_in_data[PKT_MISC_MSB:PKT_MISC_LSB] <= bridge_checksum(
+                pack_ucie_ad_cpl(seed[16] ? UCIE_CPL_SC : UCIE_CPL_UR,
+                                 seed[15:8], seed[31:16], {6'h0, seed[7:6]},
+                                 seed[23:16], seed[7:0], 8'h00));
+            end
+            2'd1: begin
+              ucie_in_data <= pack_ucie_mem_cpl(
+                               seed[16] ? UCIE_CPL_SC : UCIE_CPL_CA,
+                               seed[15:8], seed[31:16], {6'h0, seed[7:6]},
+                               seed[23:16], seed[7:0], 8'h00);
+              ucie_in_data[PKT_MISC_MSB:PKT_MISC_LSB] <= bridge_checksum(
+                pack_ucie_mem_cpl(seed[16] ? UCIE_CPL_SC : UCIE_CPL_CA,
+                                  seed[15:8], seed[31:16], {6'h0, seed[7:6]},
+                                  seed[23:16], seed[7:0], 8'h00));
+            end
+            default: begin
+              ucie_in_data <= pack_ucie_cache_cpl(
+                               seed[16] ? UCIE_CPL_UR : UCIE_CPL_SC,
+                               seed[15:8], seed[31:16], {6'h0, seed[7:6]},
+                               seed[23:16], seed[7:0], 8'h00);
+              ucie_in_data[PKT_MISC_MSB:PKT_MISC_LSB] <= bridge_checksum(
+                pack_ucie_cache_cpl(seed[16] ? UCIE_CPL_UR : UCIE_CPL_SC,
+                                    seed[15:8], seed[31:16], {6'h0, seed[7:6]},
+                                    seed[23:16], seed[7:0], 8'h00));
+            end
+          endcase
         end
       end
     end
@@ -442,14 +649,23 @@ module tb_cxl_ucie_bridge;
         seed = rnd32(seed);
         if ((seed % 3) != 0) begin
           cxl_in_valid <= 1'b1;
-          cxl_in_data  <= pack_cxl_io_req(
-                           seed[17] ? CXL_IO_OP_MEM_RD : CXL_IO_OP_CFG_WR,
-                           seed[15:8],
-                           seed[31:16],
-                           {6'h0, seed[7:6]},
-                           seed[23:16],
-                           seed[7:0]
-                         );
+          case (seed[20:18] % 5)
+            3'd0: cxl_in_data <= pack_cxl_io_req(
+                                   CXL_IO_OP_MEM_RD, seed[15:8], seed[31:16],
+                                   {6'h0, seed[7:6]}, seed[23:16], seed[7:0]);
+            3'd1: cxl_in_data <= pack_cxl_io_req(
+                                   CXL_IO_OP_CFG_WR, seed[15:8], seed[31:16],
+                                   {6'h0, seed[7:6]}, seed[23:16], seed[7:0]);
+            3'd2: cxl_in_data <= pack_cxl_mem_wr(
+                                   4'h0, seed[15:8], seed[31:16],
+                                   {6'h0, seed[7:6]}, seed[23:16], seed[7:0]);
+            3'd3: cxl_in_data <= pack_cxl_cache_wr(
+                                   4'h0, seed[15:8], seed[31:16],
+                                   {6'h0, seed[7:6]}, seed[23:16], seed[7:0]);
+            default: cxl_in_data <= pack_cxl_mem_rd(
+                                      4'h0, seed[15:8], seed[31:16],
+                                      {6'h0, seed[7:6]}, seed[23:16], seed[7:0]);
+          endcase
         end
       end
 
@@ -465,24 +681,38 @@ module tb_cxl_ucie_bridge;
         seed = rnd32(seed);
         if ((seed % 4) != 0) begin
           ucie_in_valid <= 1'b1;
-          ucie_in_data  <= pack_ucie_ad_cpl(
-                            seed[16] ? UCIE_CPL_SC : UCIE_CPL_UR,
-                            seed[15:8],
-                            seed[31:16],
-                            {6'h0, seed[7:6]},
-                            seed[23:16],
-                            seed[7:0],
-                            8'h00
-                          );
-          ucie_in_data[PKT_MISC_MSB:PKT_MISC_LSB] <= bridge_checksum(pack_ucie_ad_cpl(
-                                                       seed[16] ? UCIE_CPL_SC : UCIE_CPL_UR,
-                                                       seed[15:8],
-                                                       seed[31:16],
-                                                       {6'h0, seed[7:6]},
-                                                       seed[23:16],
-                                                       seed[7:0],
-                                                       8'h00
-                                                     ));
+          case (seed[19:18] % 3)
+            2'd0: begin
+              ucie_in_data <= pack_ucie_ad_cpl(
+                               seed[16] ? UCIE_CPL_SC : UCIE_CPL_CA,
+                               seed[15:8], seed[31:16], {6'h0, seed[7:6]},
+                               seed[23:16], seed[7:0], 8'h00);
+              ucie_in_data[PKT_MISC_MSB:PKT_MISC_LSB] <= bridge_checksum(
+                pack_ucie_ad_cpl(seed[16] ? UCIE_CPL_SC : UCIE_CPL_CA,
+                                 seed[15:8], seed[31:16], {6'h0, seed[7:6]},
+                                 seed[23:16], seed[7:0], 8'h00));
+            end
+            2'd1: begin
+              ucie_in_data <= pack_ucie_mem_cpl(
+                               seed[16] ? UCIE_CPL_SC : UCIE_CPL_UR,
+                               seed[15:8], seed[31:16], {6'h0, seed[7:6]},
+                               seed[23:16], seed[7:0], 8'h00);
+              ucie_in_data[PKT_MISC_MSB:PKT_MISC_LSB] <= bridge_checksum(
+                pack_ucie_mem_cpl(seed[16] ? UCIE_CPL_SC : UCIE_CPL_UR,
+                                  seed[15:8], seed[31:16], {6'h0, seed[7:6]},
+                                  seed[23:16], seed[7:0], 8'h00));
+            end
+            default: begin
+              ucie_in_data <= pack_ucie_cache_cpl(
+                               seed[16] ? UCIE_CPL_CA : UCIE_CPL_SC,
+                               seed[15:8], seed[31:16], {6'h0, seed[7:6]},
+                               seed[23:16], seed[7:0], 8'h00);
+              ucie_in_data[PKT_MISC_MSB:PKT_MISC_LSB] <= bridge_checksum(
+                pack_ucie_cache_cpl(seed[16] ? UCIE_CPL_CA : UCIE_CPL_SC,
+                                    seed[15:8], seed[31:16], {6'h0, seed[7:6]},
+                                    seed[23:16], seed[7:0], 8'h00));
+            end
+          endcase
         end
       end
     end

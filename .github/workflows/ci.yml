@@ -70,3 +70,23 @@ jobs:
           print(new)
           PY
           sby -f sync_fifo_ci.sby
+
+      - name: SymbiYosys formal (bmc + cover, cxl_ucie_bridge)
+        working-directory: formal
+        run: |
+          set -euo pipefail
+          test -r "${GITHUB_WORKSPACE}/src/cxl_ucie_bridge.v"
+          python3 <<'PY'
+          import os
+          from pathlib import Path
+          root = Path(os.environ["GITHUB_WORKSPACE"])
+          assert (root / "src" / "cxl_ucie_bridge.v").is_file()
+          src = root / "formal" / "cxl_ucie_bridge.sby"
+          out = root / "formal" / "cxl_ucie_bridge_ci.sby"
+          text = src.read_text()
+          new = text.replace("../../../src", str(root / "src"))
+          assert new != text, "no path substitution made in cxl_ucie_bridge.sby"
+          out.write_text(new)
+          print("wrote", out)
+          PY
+          sby -f cxl_ucie_bridge_ci.sby

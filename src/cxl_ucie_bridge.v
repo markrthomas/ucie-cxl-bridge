@@ -74,6 +74,66 @@ module cxl_ucie_bridge #(
           raw_pkt[PKT_MISC_MSB:PKT_MISC_LSB] = bridge_checksum(raw_pkt);
           translate_cxl_to_ucie = raw_pkt[WIDTH-1:0];
         end
+        CXL_PKT_KIND_MEM_RD: begin
+          attr = cxl_pkt[PKT_AUX_MSB:PKT_AUX_LSB] ^
+                 cxl_pkt[PKT_MISC_MSB:PKT_MISC_LSB];
+          raw_pkt = pack_ucie_ad_req(
+            UCIE_MSG_MEM_RD,
+            cxl_pkt[PKT_TAG_MSB:PKT_TAG_LSB],
+            cxl_pkt[PKT_ADDR_MSB:PKT_ADDR_LSB],
+            cxl_pkt[PKT_LEN_MSB:PKT_LEN_LSB],
+            cxl_pkt[PKT_ID_MSB:PKT_ID_LSB],
+            attr,
+            8'h00
+          );
+          raw_pkt[PKT_MISC_MSB:PKT_MISC_LSB] = bridge_checksum(raw_pkt);
+          translate_cxl_to_ucie = raw_pkt[WIDTH-1:0];
+        end
+        CXL_PKT_KIND_MEM_WR: begin
+          attr = cxl_pkt[PKT_AUX_MSB:PKT_AUX_LSB] ^
+                 cxl_pkt[PKT_MISC_MSB:PKT_MISC_LSB];
+          raw_pkt = pack_ucie_ad_req(
+            UCIE_MSG_MEM_WR,
+            cxl_pkt[PKT_TAG_MSB:PKT_TAG_LSB],
+            cxl_pkt[PKT_ADDR_MSB:PKT_ADDR_LSB],
+            cxl_pkt[PKT_LEN_MSB:PKT_LEN_LSB],
+            cxl_pkt[PKT_ID_MSB:PKT_ID_LSB],
+            attr,
+            8'h00
+          );
+          raw_pkt[PKT_MISC_MSB:PKT_MISC_LSB] = bridge_checksum(raw_pkt);
+          translate_cxl_to_ucie = raw_pkt[WIDTH-1:0];
+        end
+        CXL_PKT_KIND_CACHE_RD: begin
+          attr = cxl_pkt[PKT_AUX_MSB:PKT_AUX_LSB] ^
+                 cxl_pkt[PKT_MISC_MSB:PKT_MISC_LSB];
+          raw_pkt = pack_ucie_ad_req(
+            UCIE_MSG_CACHE_RD,
+            cxl_pkt[PKT_TAG_MSB:PKT_TAG_LSB],
+            cxl_pkt[PKT_ADDR_MSB:PKT_ADDR_LSB],
+            cxl_pkt[PKT_LEN_MSB:PKT_LEN_LSB],
+            cxl_pkt[PKT_ID_MSB:PKT_ID_LSB],
+            attr,
+            8'h00
+          );
+          raw_pkt[PKT_MISC_MSB:PKT_MISC_LSB] = bridge_checksum(raw_pkt);
+          translate_cxl_to_ucie = raw_pkt[WIDTH-1:0];
+        end
+        CXL_PKT_KIND_CACHE_WR: begin
+          attr = cxl_pkt[PKT_AUX_MSB:PKT_AUX_LSB] ^
+                 cxl_pkt[PKT_MISC_MSB:PKT_MISC_LSB];
+          raw_pkt = pack_ucie_ad_req(
+            UCIE_MSG_CACHE_WR,
+            cxl_pkt[PKT_TAG_MSB:PKT_TAG_LSB],
+            cxl_pkt[PKT_ADDR_MSB:PKT_ADDR_LSB],
+            cxl_pkt[PKT_LEN_MSB:PKT_LEN_LSB],
+            cxl_pkt[PKT_ID_MSB:PKT_ID_LSB],
+            attr,
+            8'h00
+          );
+          raw_pkt[PKT_MISC_MSB:PKT_MISC_LSB] = bridge_checksum(raw_pkt);
+          translate_cxl_to_ucie = raw_pkt[WIDTH-1:0];
+        end
         default: begin
           raw_pkt = {UCIE_PKT_KIND_ERROR, 4'h0, cxl_pkt[PKT_TAG_MSB:PKT_TAG_LSB],
                      16'h0000, 8'h00, cxl_pkt[PKT_ID_MSB:PKT_ID_LSB],
@@ -96,6 +156,44 @@ module cxl_ucie_bridge #(
           chk_pkt[PKT_MISC_MSB:PKT_MISC_LSB] = 8'h00;
           if (ucie_pkt[PKT_MISC_MSB:PKT_MISC_LSB] == bridge_checksum(chk_pkt)) begin
             raw_pkt = pack_cxl_io_cpl(
+              ucie_pkt[PKT_CODE_MSB:PKT_CODE_LSB],
+              ucie_pkt[PKT_TAG_MSB:PKT_TAG_LSB],
+              ucie_pkt[PKT_ADDR_MSB:PKT_ADDR_LSB],
+              ucie_pkt[PKT_LEN_MSB:PKT_LEN_LSB],
+              ucie_pkt[PKT_ID_MSB:PKT_ID_LSB],
+              ucie_pkt[PKT_AUX_MSB:PKT_AUX_LSB]
+            );
+          end else begin
+            raw_pkt = {CXL_PKT_KIND_INVALID, 4'h0, ucie_pkt[PKT_TAG_MSB:PKT_TAG_LSB],
+                       16'h0000, 8'h00, ucie_pkt[PKT_ID_MSB:PKT_ID_LSB],
+                       8'h00, 8'h00};
+          end
+          translate_ucie_to_cxl = raw_pkt[WIDTH-1:0];
+        end
+        UCIE_PKT_KIND_MEM_CPL: begin
+          chk_pkt = ucie_pkt;
+          chk_pkt[PKT_MISC_MSB:PKT_MISC_LSB] = 8'h00;
+          if (ucie_pkt[PKT_MISC_MSB:PKT_MISC_LSB] == bridge_checksum(chk_pkt)) begin
+            raw_pkt = pack_cxl_mem_cpl(
+              ucie_pkt[PKT_CODE_MSB:PKT_CODE_LSB],
+              ucie_pkt[PKT_TAG_MSB:PKT_TAG_LSB],
+              ucie_pkt[PKT_ADDR_MSB:PKT_ADDR_LSB],
+              ucie_pkt[PKT_LEN_MSB:PKT_LEN_LSB],
+              ucie_pkt[PKT_ID_MSB:PKT_ID_LSB],
+              ucie_pkt[PKT_AUX_MSB:PKT_AUX_LSB]
+            );
+          end else begin
+            raw_pkt = {CXL_PKT_KIND_INVALID, 4'h0, ucie_pkt[PKT_TAG_MSB:PKT_TAG_LSB],
+                       16'h0000, 8'h00, ucie_pkt[PKT_ID_MSB:PKT_ID_LSB],
+                       8'h00, 8'h00};
+          end
+          translate_ucie_to_cxl = raw_pkt[WIDTH-1:0];
+        end
+        UCIE_PKT_KIND_CACHE_CPL: begin
+          chk_pkt = ucie_pkt;
+          chk_pkt[PKT_MISC_MSB:PKT_MISC_LSB] = 8'h00;
+          if (ucie_pkt[PKT_MISC_MSB:PKT_MISC_LSB] == bridge_checksum(chk_pkt)) begin
+            raw_pkt = pack_cxl_cache_cpl(
               ucie_pkt[PKT_CODE_MSB:PKT_CODE_LSB],
               ucie_pkt[PKT_TAG_MSB:PKT_TAG_LSB],
               ucie_pkt[PKT_ADDR_MSB:PKT_ADDR_LSB],
@@ -150,5 +248,66 @@ module cxl_ucie_bridge #(
     .rd_en   (u2c_rd),
     .rd_data (cxl_out_data)
   );
+
+`ifdef FORMAL
+  // Helper: checksum check for the u2c direction (misc byte zeroed for computation).
+  wire [63:0] f_u2c_chk_zero = {ucie_in_data[63:8], 8'h00};
+  wire        f_u2c_cs_ok    = (ucie_in_data[7:0] == bridge_checksum(f_u2c_chk_zero));
+
+  // Translation kind preservation — purely combinational, checked at all times.
+  always @(*) begin
+    // CXL->UCIe: recognized request kinds always produce AD_REQ; everything else → ERROR.
+    if (cxl_in_data[PKT_KIND_MSB:PKT_KIND_LSB] == CXL_PKT_KIND_IO_REQ ||
+        cxl_in_data[PKT_KIND_MSB:PKT_KIND_LSB] == CXL_PKT_KIND_MEM_RD  ||
+        cxl_in_data[PKT_KIND_MSB:PKT_KIND_LSB] == CXL_PKT_KIND_MEM_WR  ||
+        cxl_in_data[PKT_KIND_MSB:PKT_KIND_LSB] == CXL_PKT_KIND_CACHE_RD ||
+        cxl_in_data[PKT_KIND_MSB:PKT_KIND_LSB] == CXL_PKT_KIND_CACHE_WR)
+      assert (c2u_wr_data[PKT_KIND_MSB:PKT_KIND_LSB] == UCIE_PKT_KIND_AD_REQ);
+    else
+      assert (c2u_wr_data[PKT_KIND_MSB:PKT_KIND_LSB] == UCIE_PKT_KIND_ERROR);
+
+    // CXL->UCIe: message type matches CXL kind for mem/cache requests.
+    if (cxl_in_data[PKT_KIND_MSB:PKT_KIND_LSB] == CXL_PKT_KIND_MEM_RD)
+      assert (c2u_wr_data[PKT_CODE_MSB:PKT_CODE_LSB] == UCIE_MSG_MEM_RD);
+    if (cxl_in_data[PKT_KIND_MSB:PKT_KIND_LSB] == CXL_PKT_KIND_MEM_WR)
+      assert (c2u_wr_data[PKT_CODE_MSB:PKT_CODE_LSB] == UCIE_MSG_MEM_WR);
+    if (cxl_in_data[PKT_KIND_MSB:PKT_KIND_LSB] == CXL_PKT_KIND_CACHE_RD)
+      assert (c2u_wr_data[PKT_CODE_MSB:PKT_CODE_LSB] == UCIE_MSG_CACHE_RD);
+    if (cxl_in_data[PKT_KIND_MSB:PKT_KIND_LSB] == CXL_PKT_KIND_CACHE_WR)
+      assert (c2u_wr_data[PKT_CODE_MSB:PKT_CODE_LSB] == UCIE_MSG_CACHE_WR);
+
+    // UCIe->CXL: good checksum → CXL kind matches UCIe completion kind.
+    if (ucie_in_data[PKT_KIND_MSB:PKT_KIND_LSB] == UCIE_PKT_KIND_AD_CPL && f_u2c_cs_ok)
+      assert (u2c_wr_data[PKT_KIND_MSB:PKT_KIND_LSB] == CXL_PKT_KIND_IO_CPL);
+    if (ucie_in_data[PKT_KIND_MSB:PKT_KIND_LSB] == UCIE_PKT_KIND_MEM_CPL && f_u2c_cs_ok)
+      assert (u2c_wr_data[PKT_KIND_MSB:PKT_KIND_LSB] == CXL_PKT_KIND_MEM_CPL);
+    if (ucie_in_data[PKT_KIND_MSB:PKT_KIND_LSB] == UCIE_PKT_KIND_CACHE_CPL && f_u2c_cs_ok)
+      assert (u2c_wr_data[PKT_KIND_MSB:PKT_KIND_LSB] == CXL_PKT_KIND_CACHE_CPL);
+
+    // UCIe->CXL: bad checksum or unknown kind → INVALID.
+    if (ucie_in_data[PKT_KIND_MSB:PKT_KIND_LSB] == UCIE_PKT_KIND_AD_CPL && !f_u2c_cs_ok)
+      assert (u2c_wr_data[PKT_KIND_MSB:PKT_KIND_LSB] == CXL_PKT_KIND_INVALID);
+    if (ucie_in_data[PKT_KIND_MSB:PKT_KIND_LSB] == UCIE_PKT_KIND_MEM_CPL && !f_u2c_cs_ok)
+      assert (u2c_wr_data[PKT_KIND_MSB:PKT_KIND_LSB] == CXL_PKT_KIND_INVALID);
+    if (ucie_in_data[PKT_KIND_MSB:PKT_KIND_LSB] == UCIE_PKT_KIND_CACHE_CPL && !f_u2c_cs_ok)
+      assert (u2c_wr_data[PKT_KIND_MSB:PKT_KIND_LSB] == CXL_PKT_KIND_INVALID);
+    if (ucie_in_data[PKT_KIND_MSB:PKT_KIND_LSB] != UCIE_PKT_KIND_AD_CPL    &&
+        ucie_in_data[PKT_KIND_MSB:PKT_KIND_LSB] != UCIE_PKT_KIND_MEM_CPL   &&
+        ucie_in_data[PKT_KIND_MSB:PKT_KIND_LSB] != UCIE_PKT_KIND_CACHE_CPL)
+      assert (u2c_wr_data[PKT_KIND_MSB:PKT_KIND_LSB] == CXL_PKT_KIND_INVALID);
+  end
+
+  // Cover: each new packet kind can reach the bridge.
+  always_ff @(posedge clk) begin
+    if (rst_n) begin
+      cover (cxl_in_valid && cxl_in_data[PKT_KIND_MSB:PKT_KIND_LSB] == CXL_PKT_KIND_MEM_RD);
+      cover (cxl_in_valid && cxl_in_data[PKT_KIND_MSB:PKT_KIND_LSB] == CXL_PKT_KIND_MEM_WR);
+      cover (cxl_in_valid && cxl_in_data[PKT_KIND_MSB:PKT_KIND_LSB] == CXL_PKT_KIND_CACHE_RD);
+      cover (cxl_in_valid && cxl_in_data[PKT_KIND_MSB:PKT_KIND_LSB] == CXL_PKT_KIND_CACHE_WR);
+      cover (ucie_in_valid && ucie_in_data[PKT_KIND_MSB:PKT_KIND_LSB] == UCIE_PKT_KIND_MEM_CPL);
+      cover (ucie_in_valid && ucie_in_data[PKT_KIND_MSB:PKT_KIND_LSB] == UCIE_PKT_KIND_CACHE_CPL);
+    end
+  end
+`endif
 
 endmodule

@@ -28,7 +28,7 @@ vcd: compile
 
 # Generate VCD then open in gtkwave (blocking until gtkwave exits)
 gtkwave: vcd
-	gtkwave $(VCD)
+	gtkwave $(VCD) cxl_ucie_bridge.gtkw
 
 $(OUT): $(SOURCES) | $(BUILD_DIR)
 	iverilog -g2005-sv -I$(SRC_DIR) -o $@ $(SOURCES)

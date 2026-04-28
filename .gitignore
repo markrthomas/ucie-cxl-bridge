@@ -5,9 +5,12 @@ doc/build/
 
 # SymbiYosys (workdirs next to each .sby; names vary by sby version / flags)
 formal/sync_fifo/
-# CI rewrites read_verilog path into sync_fifo_ci.sby (see .github/workflows/ci.yml)
+# CI rewrites read_verilog path into *_ci.sby (see .github/workflows/ci.yml)
 formal/sync_fifo_ci.sby
 formal/sync_fifo_ci/
+formal/cxl_ucie_bridge_ci.sby
+formal/cxl_ucie_bridge_ci/
+formal/cxl_ucie_bridge/
 formal/sync_fifo_ci_bmc/
 formal/sync_fifo_ci_cover/
 formal/*_bmc/

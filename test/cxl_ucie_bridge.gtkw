@@ -1,0 +1,53 @@
+[dumpfile] "build/waves.vcd"
+[timestart] 0
+[size] 1920 1080
+
+@28
+-Clock & Reset
+tb_cxl_ucie_bridge.clk
+tb_cxl_ucie_bridge.rst_n
+
+@28
+-CXL->UCIe Ingress
+tb_cxl_ucie_bridge.cxl_in_valid
+tb_cxl_ucie_bridge.cxl_in_ready
+@200
+tb_cxl_ucie_bridge.cxl_in_data[63:0]
+
+@28
+-CXL->UCIe Egress
+tb_cxl_ucie_bridge.ucie_out_valid
+tb_cxl_ucie_bridge.ucie_out_ready
+@200
+tb_cxl_ucie_bridge.ucie_out_data[63:0]
+
+@28
+-UCIe->CXL Ingress
+tb_cxl_ucie_bridge.ucie_in_valid
+tb_cxl_ucie_bridge.ucie_in_ready
+@200
+tb_cxl_ucie_bridge.ucie_in_data[63:0]
+
+@28
+-UCIe->CXL Egress
+tb_cxl_ucie_bridge.cxl_out_valid
+tb_cxl_ucie_bridge.cxl_out_ready
+@200
+tb_cxl_ucie_bridge.cxl_out_data[63:0]
+
+@28
+-c2u FIFO
+tb_cxl_ucie_bridge.dut.c2u_full
+tb_cxl_ucie_bridge.dut.c2u_empty
+@22
+tb_cxl_ucie_bridge.dut.u_c2u.count[3:0]
+
+@28
+-u2c FIFO
+tb_cxl_ucie_bridge.dut.u2c_full
+tb_cxl_ucie_bridge.dut.u2c_empty
+@22
+tb_cxl_ucie_bridge.dut.u_u2c.count[3:0]
+
+[pattern_trace] 1
+[pattern_trace] 0
