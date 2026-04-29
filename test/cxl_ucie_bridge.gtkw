@@ -36,11 +36,18 @@ tb_cxl_ucie_bridge.cxl_out_ready
 tb_cxl_ucie_bridge.cxl_out_data[63:0]
 
 @28
--c2u FIFO
-tb_cxl_ucie_bridge.dut.c2u_full
-tb_cxl_ucie_bridge.dut.c2u_empty
+-c2u Posted FIFO
+tb_cxl_ucie_bridge.dut.c2u_posted_full
+tb_cxl_ucie_bridge.dut.c2u_posted_empty
 @22
-tb_cxl_ucie_bridge.dut.u_c2u.count[3:0]
+tb_cxl_ucie_bridge.dut.u_c2u_posted.count[3:0]
+
+@28
+-c2u NP FIFO
+tb_cxl_ucie_bridge.dut.c2u_np_full
+tb_cxl_ucie_bridge.dut.c2u_np_empty
+@22
+tb_cxl_ucie_bridge.dut.u_c2u_np.count[3:0]
 
 @28
 -u2c FIFO
@@ -48,6 +55,16 @@ tb_cxl_ucie_bridge.dut.u2c_full
 tb_cxl_ucie_bridge.dut.u2c_empty
 @22
 tb_cxl_ucie_bridge.dut.u_u2c.count[3:0]
+
+@28
+-Credit Counters
+tb_cxl_ucie_bridge.dut.posted_credits_avail
+tb_cxl_ucie_bridge.dut.np_credits_avail
+tb_cxl_ucie_bridge.dut.cpl_credits_avail
+@22
+tb_cxl_ucie_bridge.dut.u_posted_crd.cnt[3:0]
+tb_cxl_ucie_bridge.dut.u_np_crd.cnt[3:0]
+tb_cxl_ucie_bridge.dut.u_cpl_crd.cnt[3:0]
 
 [pattern_trace] 1
 [pattern_trace] 0

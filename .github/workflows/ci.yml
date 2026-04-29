@@ -35,7 +35,7 @@ jobs:
       - name: Lint RTL (no testbench)
         run: |
           verilator -Isrc --lint-only -Wall -top-module cxl_ucie_bridge \
-            src/sync_fifo.v src/cxl_ucie_bridge.v
+            src/sync_fifo.v src/credit_counter.v src/cxl_ucie_bridge.v
 
   formal:
     runs-on: ubuntu-latest

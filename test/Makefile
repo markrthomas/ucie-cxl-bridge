@@ -6,7 +6,7 @@ BUILD_DIR := build
 SRC_DIR   := ../src
 VCD       := $(BUILD_DIR)/waves.vcd
 
-SOURCES := $(SRC_DIR)/sync_fifo.v $(SRC_DIR)/cxl_ucie_bridge.v $(SRC_DIR)/cxl_ucie_bridge_chk.v $(SRC_DIR)/tb_cxl_ucie_bridge.v
+SOURCES := $(SRC_DIR)/sync_fifo.v $(SRC_DIR)/credit_counter.v $(SRC_DIR)/cxl_ucie_bridge.v $(SRC_DIR)/cxl_ucie_bridge_chk.v $(SRC_DIR)/tb_cxl_ucie_bridge.v
 OUT     := $(BUILD_DIR)/tb.out
 
 .PHONY: all run sim compile stress vcd gtkwave lint clean
@@ -39,7 +39,7 @@ $(BUILD_DIR):
 # Verilator second-opinion lint (from repo root paths).
 lint:
 	cd .. && verilator -Isrc --lint-only -Wall -top-module cxl_ucie_bridge \
-		src/sync_fifo.v src/cxl_ucie_bridge.v
+		src/sync_fifo.v src/credit_counter.v src/cxl_ucie_bridge.v
 
 clean:
 	rm -rf $(BUILD_DIR)

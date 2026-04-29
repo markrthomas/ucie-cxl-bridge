@@ -49,14 +49,31 @@ Each direction uses a **valid/ready** interface with a synchronous FIFO (first-w
 
 Unsupported packet kinds are not dropped; they are converted into an explicit error or invalid packet kind on the output side so the testbench and downstream logic can observe the mismatch.
 
-## 4.3 Narrowed first target
+## 4.3 Implemented packet taxonomy (Phases 1–2)
 
-To avoid stalling in a broad "future bridge" state, the repository freezes the first implementation target as:
+Phase 1 froze a narrow first target (CXL.io request ↔ UCIe adapter completion) to make semantics exercise-able without claiming full protocol compliance. Phase 2 broadened the packet taxonomy to cover:
 
-1. **Ingress on the CXL-facing side:** simplified `CXL.io` request packet
-2. **Ingress on the UCIe-facing side:** simplified UCIe adapter completion packet
-3. **Translation behavior:** field remap plus lightweight checksum generation or verification
-4. **Non-goals in this phase:** full packet taxonomy, payload movement, credits, ordering domains, retries, and link bring-up
+1. **CXL-facing ingress:** `CXL.io` requests (CFG_RD, CFG_WR, MEM_RD, MEM_WR) and `CXL.mem` / `CXL.cache` requests (MEM_RD, MEM_WR, CACHE_RD, CACHE_WR)
+2. **UCIe-facing ingress:** UCIe adapter completions — `AD_CPL`, `MEM_CPL`, `CACHE_CPL` — each with checksum verification
+3. **Translation behavior:** field remap, opcode/kind preservation, lightweight XOR checksum generation and verification
+4. **Remaining non-goals:** payload movement, retries, full CXL ordering compliance, and link bring-up
+
+## 4.4 Flow control and ordering (Phase 3)
+
+Phase 3 adds per-direction credit counters and splits the CXL→UCIe path into two ordering domains:
+
+**Credit counting (`src/credit_counter.v`):** A parameterized `credit_counter` module tracks available send credits per direction. Credits are consumed when a packet enters a FIFO and returned automatically when the downstream reads the packet. The bridge gates `cxl_in_ready` on both local FIFO space and credit availability, so an exhausted credit pool stalls the source cleanly without overrunning peer buffers.
+
+**Ordering domain split:** CXL defines two classes of traffic with different ordering rules:
+
+| Class | CXL kinds | UCIe msg type | Rule |
+|-------|-----------|---------------|------|
+| Posted | `MEM_WR`, `CACHE_WR` | `UCIE_MSG_MEM_WR`, `UCIE_MSG_CACHE_WR` | May bypass non-posted |
+| Non-posted | `IO_REQ`, `MEM_RD`, `CACHE_RD` | `UCIE_MSG_*` (other) | Must preserve ordering within class |
+
+The bridge routes posted packets to `u_c2u_posted` and non-posted packets to `u_c2u_np` — two independent sync FIFOs, each with its own credit counter. The egress arbiter is **posted-priority**: when both FIFOs have data, posted packets drain first (consistent with CXL's permission for posted traffic to bypass non-posted). Within each class, FIFO ordering preserves packet sequence.
+
+The UCIe→CXL path (completions only) remains a single FIFO with its own credit counter (`u_cpl_crd`).
 
 # 5. Interface summary
 
@@ -105,8 +122,9 @@ Optional waveform dumps are enabled with the `+vcd` plus argument; GTKWave is us
 | Path | Role |
 |------|------|
 | `src/sync_fifo.v` | Parameterized synchronous FIFO |
+| `src/credit_counter.v` | Parameterized credit counter (consume / return / available) |
 | `src/cxl_ucie_bridge_defs.vh` | Shared packet kinds, field locations, pack helpers, checksum helper |
-| `src/cxl_ucie_bridge.v` | Bridge RTL |
+| `src/cxl_ucie_bridge.v` | Bridge RTL (split c2u FIFOs, credit counters, posted-priority arbiter) |
 | `src/cxl_ucie_bridge_chk.v` | Simulation checks (egress stability / no valid retraction) |
 | `src/tb_cxl_ucie_bridge.v` | Testbench |
 | `test/Makefile` | Simulation and waveform targets |
@@ -120,9 +138,9 @@ Optional waveform dumps are enabled with the `+vcd` plus argument; GTKWave is us
 
 Work is expected to proceed roughly in the following order; later phases depend on chosen protocol profiles and tooling.
 
-1. **Narrow first target (current)** — Typed 64-bit packet definitions, simplified `CXL.io` request translation, simplified UCIe completion translation, synchronous FIFO buffering, ready/valid checks, simulation and bounded formal on the FIFO, second-opinion lint (Verilator).
-2. **Broaden typed traffic** — Add more packet classes and explicit message families aligned to the chosen CXL and UCIe adapter profiles; expand scoreboarding and assertions accordingly.
-3. **Flow control and ordering** — Credit counters, ordering domains, and directed plus constrained-random verification; consider **UVM** or another advanced methodology when stimulus and coverage closure justify the overhead.
+1. **Narrow first target (done ✓)** — Typed 64-bit packet definitions, simplified `CXL.io` request translation, simplified UCIe completion translation, synchronous FIFO buffering, ready/valid checks, simulation and bounded formal on the FIFO, second-opinion lint (Verilator).
+2. **Broaden typed traffic (done ✓)** — Full CXL.io / CXL.mem / CXL.cache packet taxonomy, matching UCIe adapter message families, expanded scoreboarding and formal assertions, GTKWave save file.
+3. **Flow control and ordering (done ✓)** — Per-direction credit counters, posted/non-posted ordering domain split, posted-priority egress arbiter, ordering directed test, credit-exhaustion formal covers.
 4. **Bring-up and non-ideal behavior** — Reset sequencing, link readiness gates, error injection, and (when needed) **clocking / CDC** documentation and RTL.
 
 # 9. Future work (detail)

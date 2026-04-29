@@ -1,14 +1,18 @@
 // CXL <-> UCIe bridge — protocol mapping TBD.
-// Buffered ready/valid datapaths: parameterized sync FIFO per direction (default depth 8).
-// FIFO_DEPTH must be a power of 2 (see sync_fifo.v).
+// Phase 3: per-direction credit counters + ordering domain split (posted vs. non-posted).
+// c2u path uses two sync FIFOs: posted (MEM_WR, CACHE_WR) and non-posted (all others).
+// Egress arbiter is posted-first (CXL spec: posted may bypass non-posted).
 
 /* verilator lint_off UNUSEDPARAM */
 `include "cxl_ucie_bridge_defs.vh"
 /* verilator lint_on UNUSEDPARAM */
 
 module cxl_ucie_bridge #(
-  parameter integer WIDTH       = 64,
-  parameter integer FIFO_DEPTH  = 8
+  parameter integer WIDTH          = 64,
+  parameter integer FIFO_DEPTH     = 8,
+  parameter integer POSTED_CREDITS = FIFO_DEPTH,
+  parameter integer NP_CREDITS     = FIFO_DEPTH,
+  parameter integer CPL_CREDITS    = FIFO_DEPTH
 ) (
   input  wire                  clk,
   input  wire                  rst_n,
@@ -34,22 +38,23 @@ module cxl_ucie_bridge #(
     end
   endgenerate
 
-  wire c2u_full;
-  wire c2u_empty;
-  wire u2c_full;
-  wire u2c_empty;
-  wire [WIDTH-1:0] c2u_wr_data;
-  wire [WIDTH-1:0] u2c_wr_data;
+  // --- Packet classification ---
+  // Posted: writes that do not require a completion (MEM_WR, CACHE_WR).
+  // All other CXL kinds — IO_REQ reads/cfg, MEM_RD, CACHE_RD — are non-posted.
+  /* verilator lint_off UNUSEDSIGNAL */
+  function automatic is_posted;
+    input [WIDTH-1:0] pkt;
+    begin
+      case (pkt[PKT_KIND_MSB:PKT_KIND_LSB])
+        CXL_PKT_KIND_MEM_WR:   is_posted = 1'b1;
+        CXL_PKT_KIND_CACHE_WR: is_posted = 1'b1;
+        default:               is_posted = 1'b0;
+      endcase
+    end
+  endfunction
+  /* verilator lint_on UNUSEDSIGNAL */
 
-  assign cxl_in_ready   = !c2u_full;
-  assign ucie_out_valid = !c2u_empty;
-  assign ucie_in_ready  = !u2c_full;
-  assign cxl_out_valid  = !u2c_empty;
-
-  wire c2u_wr = cxl_in_valid && cxl_in_ready;
-  wire c2u_rd = ucie_out_ready && ucie_out_valid;
-  wire u2c_wr = ucie_in_valid && ucie_in_ready;
-  wire u2c_rd = cxl_out_ready && cxl_out_valid;
+  // --- Translation functions ---
 
   function automatic [WIDTH-1:0] translate_cxl_to_ucie;
     input [WIDTH-1:0] cxl_pkt;
@@ -218,21 +223,123 @@ module cxl_ucie_bridge #(
     end
   endfunction
 
-  assign c2u_wr_data = translate_cxl_to_ucie(cxl_in_data);
-  assign u2c_wr_data = translate_ucie_to_cxl(ucie_in_data);
+  // --- Internal signals ---
+
+  wire c2u_posted_full;
+  wire c2u_posted_empty;
+  wire c2u_np_full;
+  wire c2u_np_empty;
+  wire u2c_full;
+  wire u2c_empty;
+
+  wire posted_credits_avail;
+  wire np_credits_avail;
+  wire cpl_credits_avail;
+
+  wire [WIDTH-1:0] c2u_wr_data    = translate_cxl_to_ucie(cxl_in_data);
+  wire [WIDTH-1:0] u2c_wr_data    = translate_ucie_to_cxl(ucie_in_data);
+  wire [WIDTH-1:0] c2u_posted_rd_data;
+  wire [WIDTH-1:0] c2u_np_rd_data;
+
+  wire cxl_in_is_posted_w = is_posted(cxl_in_data);
+
+  // CXL input accepted when its target FIFO has space AND credits are available.
+  assign cxl_in_ready  = cxl_in_is_posted_w ?
+                         (!c2u_posted_full && posted_credits_avail) :
+                         (!c2u_np_full && np_credits_avail);
+
+  assign ucie_in_ready = !u2c_full && cpl_credits_avail;
+  assign cxl_out_valid = !u2c_empty;
+
+  // Egress arbiter: posted FIFO has priority (CXL spec: posted may bypass non-posted).
+  // Lock the selection once a beat is in-flight (valid && !ready) so ucie_out_data
+  // cannot change before the downstream accepts it.
+  reg  arb_locked_r;
+  reg  arb_sel_posted_r;
+
+  wire arb_sel_now   = !c2u_posted_empty;
+  wire arb_sel_final = arb_locked_r ? arb_sel_posted_r : arb_sel_now;
+
+  always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+      arb_locked_r     <= 1'b0;
+      arb_sel_posted_r <= 1'b0;
+    end else begin
+      if (arb_locked_r) begin
+        if (ucie_out_ready)
+          arb_locked_r <= 1'b0;
+      end else if (ucie_out_valid && !ucie_out_ready) begin
+        arb_locked_r     <= 1'b1;
+        arb_sel_posted_r <= arb_sel_now;
+      end
+    end
+  end
+
+  assign ucie_out_valid = !c2u_posted_empty || !c2u_np_empty;
+  assign ucie_out_data  = arb_sel_final ? c2u_posted_rd_data : c2u_np_rd_data;
+
+  wire c2u_wr         = cxl_in_valid && cxl_in_ready;
+  wire c2u_posted_wr  = c2u_wr && cxl_in_is_posted_w;
+  wire c2u_np_wr      = c2u_wr && !cxl_in_is_posted_w;
+  wire c2u_posted_rd  = ucie_out_valid && ucie_out_ready && arb_sel_final;
+  wire c2u_np_rd      = ucie_out_valid && ucie_out_ready && !arb_sel_final;
+  wire u2c_wr         = ucie_in_valid && ucie_in_ready;
+  wire u2c_rd         = cxl_out_ready && cxl_out_valid;
+
+  // --- Credit counters (credits return when downstream reads from the FIFO) ---
+
+  credit_counter #(.CREDITS(POSTED_CREDITS)) u_posted_crd (
+    .clk      (clk),
+    .rst_n    (rst_n),
+    .consume  (c2u_posted_wr),
+    .ret      (c2u_posted_rd),
+    .available(posted_credits_avail)
+  );
+
+  credit_counter #(.CREDITS(NP_CREDITS)) u_np_crd (
+    .clk      (clk),
+    .rst_n    (rst_n),
+    .consume  (c2u_np_wr),
+    .ret      (c2u_np_rd),
+    .available(np_credits_avail)
+  );
+
+  credit_counter #(.CREDITS(CPL_CREDITS)) u_cpl_crd (
+    .clk      (clk),
+    .rst_n    (rst_n),
+    .consume  (u2c_wr),
+    .ret      (u2c_rd),
+    .available(cpl_credits_avail)
+  );
+
+  // --- FIFOs ---
 
   sync_fifo #(
     .WIDTH (WIDTH),
     .DEPTH (FIFO_DEPTH)
-  ) u_c2u (
+  ) u_c2u_posted (
     .clk     (clk),
     .rst_n   (rst_n),
-    .wr_en   (c2u_wr),
+    .wr_en   (c2u_posted_wr),
     .wr_data (c2u_wr_data),
-    .full    (c2u_full),
-    .empty   (c2u_empty),
-    .rd_en   (c2u_rd),
-    .rd_data (ucie_out_data)
+    .full    (c2u_posted_full),
+    .empty   (c2u_posted_empty),
+    .rd_en   (c2u_posted_rd),
+    .rd_data (c2u_posted_rd_data)
+  );
+
+  sync_fifo #(
+    .WIDTH (WIDTH),
+    .DEPTH (FIFO_DEPTH)
+  ) u_c2u_np (
+    .clk     (clk),
+    .rst_n   (rst_n),
+    .wr_en   (c2u_np_wr),
+    .wr_data (c2u_wr_data),
+    .full    (c2u_np_full),
+    .empty   (c2u_np_empty),
+    .rd_en   (c2u_np_rd),
+    .rd_data (c2u_np_rd_data)
   );
 
   sync_fifo #(
@@ -297,7 +404,26 @@ module cxl_ucie_bridge #(
       assert (u2c_wr_data[PKT_KIND_MSB:PKT_KIND_LSB] == CXL_PKT_KIND_INVALID);
   end
 
-  // Cover: each new packet kind can reach the bridge.
+  // Phase 3: ordering domain routing correctness.
+  always @(*) begin
+    // Accepted CXL packets route to exactly one FIFO.
+    if (cxl_in_valid && cxl_in_ready) begin
+      if (cxl_in_is_posted_w)
+        assert (c2u_posted_wr && !c2u_np_wr);
+      else
+        assert (!c2u_posted_wr && c2u_np_wr);
+    end
+    // Egress arbiter correctness: read fires on the selected FIFO.
+    if (ucie_out_valid && ucie_out_ready) begin
+      assert (c2u_posted_rd == arb_sel_final);
+      assert (c2u_np_rd     == !arb_sel_final);
+    end
+    // Arbiter selects posted when not locked and posted is non-empty (priority rule).
+    if (!arb_locked_r && !c2u_posted_empty)
+      assert (arb_sel_final == 1'b1);
+  end
+
+  // Covers: packet kind reachability and Phase 3 scenarios.
   always_ff @(posedge clk) begin
     if (rst_n) begin
       cover (cxl_in_valid && cxl_in_data[PKT_KIND_MSB:PKT_KIND_LSB] == CXL_PKT_KIND_MEM_RD);
@@ -306,6 +432,11 @@ module cxl_ucie_bridge #(
       cover (cxl_in_valid && cxl_in_data[PKT_KIND_MSB:PKT_KIND_LSB] == CXL_PKT_KIND_CACHE_WR);
       cover (ucie_in_valid && ucie_in_data[PKT_KIND_MSB:PKT_KIND_LSB] == UCIE_PKT_KIND_MEM_CPL);
       cover (ucie_in_valid && ucie_in_data[PKT_KIND_MSB:PKT_KIND_LSB] == UCIE_PKT_KIND_CACHE_CPL);
+      // Phase 3: credit exhaustion (CXL input stalled by empty credits)
+      cover (cxl_in_valid && !cxl_in_ready && !posted_credits_avail);
+      cover (cxl_in_valid && !cxl_in_ready && !np_credits_avail);
+      // Phase 3: posted bypasses non-posted (ordering domain property)
+      cover (c2u_posted_rd && !c2u_np_empty);
     end
   end
 `endif
