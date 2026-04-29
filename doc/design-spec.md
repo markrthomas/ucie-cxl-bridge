@@ -8,9 +8,9 @@ date: "April 2026"
 
 This document specifies the design intent for an experimental **bridge between Compute Express Link (CXL)** traffic and a **UCIe-compatible adapter-layer interface**. The implementation targets **Verilog** suitable for simulation with **Icarus Verilog** (`iverilog` / `vvp`).
 
-**In scope today:** simulation bring-up, a documented module boundary, a narrowed first protocol target, and a path to richer protocol behavior.
+**In scope today:** simulation bring-up, a documented module boundary, a typed packet taxonomy covering CXL.io / CXL.mem / CXL.cache and matching UCIe adapter completions, a lightweight credit and ordering model (posted vs. non-posted domain split with posted-priority egress arbitration), and a path toward link bring-up.
 
-**Out of scope for the current RTL:** full CXL protocol compliance, production UCIe PHY and link training, and complete credit or ordering models (described here as requirements to be met by future revisions).
+**Out of scope for the current RTL:** full CXL protocol compliance, production UCIe PHY and link training, payload movement, retries, and reset / link bring-up sequencing (described here as requirements to be met by future revisions).
 
 # 2. Background
 
@@ -36,16 +36,21 @@ At a high level, the bridge sits between:
 
 Internal blocks (to be elaborated in later revisions) may include buffering, translation tables, credit trackers, and optional reorder queues subject to specification rules.
 
-## 4.2 Current implementation (baseline)
+## 4.2 Current implementation (Phase 3 baseline)
 
-The repository now contains a **first protocol-bearing revision** built on the earlier dual-path streaming shell. The current scope is intentionally narrow so semantics can be exercised without claiming full CXL or UCIe compliance.
+The repository contains a **Phase 3 RTL** that exercises a typed packet model, per-direction credit flow control, and a posted/non-posted ordering domain split. The current scope is intentionally narrow relative to full CXL/UCIe compliance so semantics can be exercised and verified incrementally.
 
-The top RTL module is `cxl_ucie_bridge`. It parameterizes flit width (`WIDTH`, default 64 bits) and FIFO depth per direction (`FIFO_DEPTH`, default 8; must be a power of two for `sync_fifo`). The current translation layer assumes **64-bit packets** with shared field definitions in `src/cxl_ucie_bridge_defs.vh`. Each direction instantiates `sync_fifo` for buffering:
+The top RTL module is `cxl_ucie_bridge`. It parameterizes flit width (`WIDTH`, default 64 bits), FIFO depth (`FIFO_DEPTH`, default 8; must be a power of two), and initial credits per direction (`POSTED_CREDITS`, `NP_CREDITS`, `CPL_CREDITS`, all defaulting to `FIFO_DEPTH`). The translation layer assumes **64-bit packets** with shared field definitions in `src/cxl_ucie_bridge_defs.vh`.
 
-- **CXL → UCIe** — simplified `CXL.io` request packet to simplified UCIe adapter request packet
-- **UCIe → CXL** — simplified UCIe adapter completion packet to simplified `CXL.io` completion packet
+**CXL → UCIe path** uses two independent sync FIFOs:
+- `u_c2u_posted` — posted requests (`MEM_WR`, `CACHE_WR`), gated by `u_posted_crd` credit counter
+- `u_c2u_np` — non-posted requests (all other CXL kinds), gated by `u_np_crd` credit counter
 
-Each direction uses a **valid/ready** interface with a synchronous FIFO (first-word fall-through read data) and standard backpressure: upstream `ready` is asserted when that FIFO is not full; downstream sees `valid` when the FIFO is not empty.
+The egress arbiter selects between the two FIFOs using posted-priority arbitration. A registered lock (`arb_locked_r` / `arb_sel_posted_r`) freezes the selected FIFO for the duration of any stalled handshake, ensuring `ucie_out_data` remains stable while `ucie_out_valid` is asserted and `ucie_out_ready` is deasserted.
+
+**UCIe → CXL path** uses a single sync FIFO (`u_u2c`) gated by `u_cpl_crd`.
+
+Each direction uses a **valid/ready** interface with standard backpressure: upstream `ready` is asserted when the target FIFO is not full **and** credits are available; downstream sees `valid` when the output FIFO (or arbiter) has data.
 
 Unsupported packet kinds are not dropped; they are converted into an explicit error or invalid packet kind on the output side so the testbench and downstream logic can observe the mismatch.
 
@@ -110,8 +115,8 @@ The UCIe→CXL path (completions only) remains a single FIFO with its own credit
 
 - **Simulator:** Icarus Verilog (`iverilog` compilation, `vvp` execution).
 - **Lint (second opinion):** Verilator `--lint-only` on `sync_fifo` + `cxl_ucie_bridge` (CI), without elaborating the testbench.
-- **Formal:** SymbiYosys (`sby`) on `sync_fifo`: bounded **BMC** (safety asserts on `count`), **cover** reachability (full, simultaneous read/write, mid occupancy), and `async2sync` after `prep` for active-low asynchronous reset. BMC includes **initial assumptions** so registers are not left unconstrained at time zero (otherwise `count` could start above `DEPTH` and fail vacuously). Assertions and covers are `FORMAL`-guarded in RTL (see `formal/sync_fifo.sby`). CI uses the OSS CAD Suite installer action so `sby` and solvers are available without distro-specific packages.
-- **Testbench:** `tb_cxl_ucie_bridge` runs a short smoke test (one typed packet per direction), then stress with concurrent traffic, random sink `ready`, bursts, semantic scoreboarding of translated packets, and a drain phase. The `cxl_ucie_bridge_chk` module checks egress **ready/valid** stability rules during simulation.
+- **Formal:** SymbiYosys (`sby`) targets two modules. `formal/sync_fifo.sby`: bounded **BMC** (safety asserts on `count`), **cover** reachability (full, simultaneous read/write, mid occupancy), and `async2sync` after `prep` for active-low asynchronous reset; BMC uses **initial assumptions** so registers are not unconstrained at time zero. `formal/cxl_ucie_bridge.sby`: BMC checks translation kind-preservation (CXL kind → correct UCIe kind, bad checksum → INVALID), ordering-domain routing (accepted packets route to exactly one FIFO), and arbiter correctness (`c2u_posted_rd == arb_sel_final`, posted-priority invariant when unlocked); cover mode reaches all packet kinds, credit-exhaustion stalls, and the posted-bypasses-NP scenario. Assertions and covers are `FORMAL`-guarded in RTL. CI uses the OSS CAD Suite installer action.
+- **Testbench:** `tb_cxl_ucie_bridge` runs smoke tests for every packet kind (CXL.io, CXL.mem, CXL.cache requests; AD_CPL, MEM_CPL, CACHE_CPL completions), an ordering directed test (posted drains before non-posted when both FIFOs are loaded), then stress with concurrent bidirectional traffic, random sink `ready`, and semantic scoreboarding split by ordering class. The `cxl_ucie_bridge_chk` module checks egress **ready/valid** stability rules (valid must not retract, data must not change while valid && !ready) during simulation.
 - **Scoreboard behavior:** The testbench uses a reusable per-cycle scoreboard step and explicitly accounts for transfers on the stress-to-drain boundary clock edge before disabling new source traffic.
 - **Automation:** The `test/` directory provides a `Makefile` with targets `run`, `vcd` (optional waveform dump to `build/waves.vcd`), and `gtkwave` (regenerate VCD and open GTKWave when available). On Windows, `test/run_sim.ps1` runs the same compile and `vvp` steps when `iverilog`/`vvp` are on `PATH`.
 
@@ -130,6 +135,7 @@ Optional waveform dumps are enabled with the `+vcd` plus argument; GTKWave is us
 | `test/Makefile` | Simulation and waveform targets |
 | `test/run_sim.ps1` | Windows-oriented compile + `vvp` helper |
 | `formal/sync_fifo.sby` | SymbiYosys bounded BMC for `sync_fifo` (requires `sby`, e.g. OSS CAD Suite) |
+| `formal/cxl_ucie_bridge.sby` | SymbiYosys BMC + cover for `cxl_ucie_bridge` (translation, routing, arbiter correctness) |
 | `doc/design-spec.md` | This specification (source) |
 | `doc/Makefile` | PDF build for this document |
 | `CONTRIBUTING.md` | Simulation, formal, and CI notes for contributors |
@@ -145,8 +151,8 @@ Work is expected to proceed roughly in the following order; later phases depend 
 
 # 9. Future work (detail)
 
-- Replace generic flits with **typed CXL and UCIe message** representations aligned to chosen specification revisions.
-- Implement **credit** and **ordering** state machines and verify with directed and constrained-random stimulus (tooling beyond iverilog may be required for advanced methodologies).
+- Replace the lightweight XOR checksum with a stronger integrity scheme aligned to the chosen UCIe stack profile.
+- Expand coverage to constrained-random stimulus and coverage-driven closure (tooling beyond iverilog likely required for advanced methodologies).
 - Document **reset and link bring-up** sequences and corresponding RTL interfaces.
 - Expand the design specification with **timing, clocking, and CDC** assumptions as the design adds multiple clock domains or PHY-facing logic.
 
