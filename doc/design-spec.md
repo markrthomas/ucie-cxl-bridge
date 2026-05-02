@@ -60,7 +60,7 @@ Phase 1 froze a narrow first target (CXL.io request ↔ UCIe adapter completion)
 
 1. **CXL-facing ingress:** `CXL.io` requests (CFG_RD, CFG_WR, MEM_RD, MEM_WR) and `CXL.mem` / `CXL.cache` requests (MEM_RD, MEM_WR, CACHE_RD, CACHE_WR)
 2. **UCIe-facing ingress:** UCIe adapter completions — `AD_CPL`, `MEM_CPL`, `CACHE_CPL` — each with checksum verification
-3. **Translation behavior:** field remap, opcode/kind preservation, lightweight XOR checksum generation and verification
+3. **Translation behavior:** field remap, opcode/kind preservation, CRC-8/CCITT checksum generation and verification (poly 0x07, init 0x00, over header bytes [63:8])
 4. **Remaining non-goals:** payload movement, retries, full CXL ordering compliance, and link bring-up
 
 ## 4.5 Bring-up and non-ideal behavior (Phase 4)
@@ -172,10 +172,9 @@ Work is expected to proceed roughly in the following order; later phases depend 
 
 # 9. Future work (detail)
 
-- Replace the lightweight XOR checksum with a stronger integrity scheme aligned to the chosen UCIe stack profile.
 - Expand coverage to constrained-random stimulus and coverage-driven closure (tooling beyond iverilog likely required for advanced methodologies).
-- Document **reset and link bring-up** sequences and corresponding RTL interfaces.
-- Expand the design specification with **timing, clocking, and CDC** assumptions as the design adds multiple clock domains or PHY-facing logic.
+- Document **reset and link bring-up** sequences and corresponding RTL interfaces in more detail (Phase 4 provides the FSM skeleton; handshake timing diagrams and sequence documentation remain).
+- Expand the design specification with **timing, clocking, and CDC** assumptions as the design adds multiple clock domains or PHY-facing logic (the `cdc_sync` utility is in place; wiring it into the bridge requires a second clock domain input).
 
 # 10. Document control
 

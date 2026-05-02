@@ -230,15 +230,31 @@ function automatic [63:0] pack_ucie_cache_cpl;
 endfunction
 
 // ---- Checksum ----
-// 8-bit XOR over all 8 bytes. Caller must zero the misc byte before calling.
+// CRC-8/CCITT (poly 0x07, init 0x00) over header bytes [63:8] (7 bytes).
+// Caller must zero the misc byte [7:0] before calling; that byte is not read here.
+/* verilator lint_off UNUSEDSIGNAL */
 function automatic [7:0] bridge_checksum;
   input [63:0] packet_wo_checksum;
+  reg [7:0] crc;
   begin
-    bridge_checksum = packet_wo_checksum[63:56] ^ packet_wo_checksum[55:48] ^
-                      packet_wo_checksum[47:40] ^ packet_wo_checksum[39:32] ^
-                      packet_wo_checksum[31:24] ^ packet_wo_checksum[23:16] ^
-                      packet_wo_checksum[15:8] ^ packet_wo_checksum[7:0];
+    crc = 8'h00;
+    crc = crc ^ packet_wo_checksum[63:56];
+    repeat (8) crc = crc[7] ? ((crc << 1) ^ 8'h07) : (crc << 1);
+    crc = crc ^ packet_wo_checksum[55:48];
+    repeat (8) crc = crc[7] ? ((crc << 1) ^ 8'h07) : (crc << 1);
+    crc = crc ^ packet_wo_checksum[47:40];
+    repeat (8) crc = crc[7] ? ((crc << 1) ^ 8'h07) : (crc << 1);
+    crc = crc ^ packet_wo_checksum[39:32];
+    repeat (8) crc = crc[7] ? ((crc << 1) ^ 8'h07) : (crc << 1);
+    crc = crc ^ packet_wo_checksum[31:24];
+    repeat (8) crc = crc[7] ? ((crc << 1) ^ 8'h07) : (crc << 1);
+    crc = crc ^ packet_wo_checksum[23:16];
+    repeat (8) crc = crc[7] ? ((crc << 1) ^ 8'h07) : (crc << 1);
+    crc = crc ^ packet_wo_checksum[15:8];
+    repeat (8) crc = crc[7] ? ((crc << 1) ^ 8'h07) : (crc << 1);
+    bridge_checksum = crc;
   end
 endfunction
+/* verilator lint_on UNUSEDSIGNAL */
 
 `endif
