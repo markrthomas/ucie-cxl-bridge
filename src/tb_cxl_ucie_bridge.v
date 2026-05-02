@@ -30,6 +30,10 @@ module tb_cxl_ucie_bridge;
   wire [W-1:0] cxl_out_data;
   reg         cxl_out_ready;
 
+  reg         link_up;
+  reg         err_inj_en;
+  wire        drain_done;
+
   reg [31:0] seed;
   integer cyc;
   integer p1_c2u_sent, p1_u2c_sent;
@@ -63,7 +67,10 @@ module tb_cxl_ucie_bridge;
     .ucie_in_ready(ucie_in_ready),
     .cxl_out_valid(cxl_out_valid),
     .cxl_out_data(cxl_out_data),
-    .cxl_out_ready(cxl_out_ready)
+    .cxl_out_ready(cxl_out_ready),
+    .link_up(link_up),
+    .err_inj_en(err_inj_en),
+    .drain_done(drain_done)
   );
 
   cxl_ucie_bridge_chk #(.WIDTH(W)) u_chk (
@@ -365,6 +372,8 @@ module tb_cxl_ucie_bridge;
     ucie_in_valid        = 1'b0;
     ucie_in_data         = {W{1'b0}};
     cxl_out_ready        = 1'b0;
+    link_up              = 1'b0;
+    err_inj_en           = 1'b0;
     seed                 = 32'hACE15EED;
     c2u_posted_gold_wr   = 0;
     c2u_posted_gold_rd   = 0;
@@ -378,7 +387,8 @@ module tb_cxl_ucie_bridge;
     u2c_rcvd             = 0;
 
     repeat (4) @(posedge clk);
-    rst_n = 1'b1;
+    rst_n   = 1'b1;
+    link_up = 1'b1;   // open the bridge immediately after reset
 
     // --- Smoke 1: CXL.io IO_REQ (original sanity) ---
     @(posedge clk);
@@ -574,6 +584,67 @@ module tb_cxl_ucie_bridge;
         $display("FAIL: ordering[3] want np CACHE_RD=%h got=%h", exp_np1, ucie_out_data);
         $finish(1);
       end
+    end
+
+    // --- Smoke 4: link_up gating ---
+    // After the ordering test all FIFOs are empty and the bridge is open (link_up=1, S_UP).
+    begin : blk_link_up
+      @(posedge clk);
+      link_up = 1'b0;   // S_UP will see !link_up on the next posedge → S_DRAIN, open=0
+
+      @(posedge clk);
+      // Bridge is now in S_DRAIN, open=0.  Ingress must be stalled.
+      cxl_in_valid = 1'b1;
+      cxl_in_data  = pack_cxl_mem_rd(4'h0, 8'hdd, 16'h5000, 8'h04, 8'h50, 8'h00);
+      if (cxl_in_ready !== 1'b0) begin
+        $display("FAIL: link_up_gate: cxl_in_ready must be 0 when bridge is closed");
+        $finish(1);
+      end
+      cxl_in_valid = 1'b0;
+
+      @(posedge clk);
+      // S_DRAIN sees all_empty=1 → S_DOWN.  drain_done must be asserted.
+      if (!drain_done) begin
+        $display("FAIL: link_up_gate: drain_done not asserted after FIFOs empty");
+        $finish(1);
+      end
+
+      link_up = 1'b1;   // S_DOWN will see link_up=1 on the next posedge → S_UP, open=1
+      @(posedge clk);
+      // Bridge is open again.
+
+      $display("PASS smoke link_up_gating");
+    end
+
+    // --- Smoke 5: error injection ---
+    // Assert err_inj_en for one accepted packet; verify bit 0 of the checksum is flipped.
+    begin : blk_err_inj
+      reg [W-1:0] inj_pkt;
+      reg [W-1:0] expected_clean;
+
+      inj_pkt        = pack_cxl_mem_rd(4'h0, 8'hee, 16'h6000, 8'h04, 8'h60, 8'h00);
+      expected_clean = expect_ucie_from_cxl(inj_pkt);
+
+      @(posedge clk);
+      err_inj_en     = 1'b1;
+      cxl_in_data    = inj_pkt;
+      cxl_in_valid   = 1'b1;
+      ucie_out_ready = 1'b1;
+
+      @(posedge clk);
+      while (!(cxl_in_valid && cxl_in_ready)) @(posedge clk);
+      cxl_in_valid = 1'b0;
+      err_inj_en   = 1'b0;
+
+      wait (ucie_out_valid);
+      @(posedge clk);
+      if (ucie_out_data !== {expected_clean[W-1:1], ~expected_clean[0]}) begin
+        $display("FAIL: err_inj: expected checksum bit 0 flipped exp=%h got=%h",
+                 {expected_clean[W-1:1], ~expected_clean[0]}, ucie_out_data);
+        $finish(1);
+      end
+
+      $display("PASS smoke error_injection");
     end
 
     // --- Stress: concurrent traffic + random ready ---

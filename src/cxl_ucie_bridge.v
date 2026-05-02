@@ -1,4 +1,5 @@
 // CXL <-> UCIe bridge — protocol mapping TBD.
+// Phase 4: link readiness gate (reset_drain FSM), error injection interface, CDC helper.
 // Phase 3: per-direction credit counters + ordering domain split (posted vs. non-posted).
 // c2u path uses two sync FIFOs: posted (MEM_WR, CACHE_WR) and non-posted (all others).
 // Egress arbiter is posted-first (CXL spec: posted may bypass non-posted).
@@ -29,7 +30,11 @@ module cxl_ucie_bridge #(
   output wire                  ucie_in_ready,
   output wire                  cxl_out_valid,
   output wire [WIDTH-1:0]      cxl_out_data,
-  input  wire                  cxl_out_ready
+  input  wire                  cxl_out_ready,
+  // Phase 4: link readiness and error injection
+  input  wire                  link_up,
+  input  wire                  err_inj_en,
+  output wire                  drain_done
 );
 
   generate
@@ -236,19 +241,27 @@ module cxl_ucie_bridge #(
   wire np_credits_avail;
   wire cpl_credits_avail;
 
-  wire [WIDTH-1:0] c2u_wr_data    = translate_cxl_to_ucie(cxl_in_data);
-  wire [WIDTH-1:0] u2c_wr_data    = translate_ucie_to_cxl(ucie_in_data);
+  // Phase 4: all FIFOs empty — used by reset_drain to detect drain completion.
+  wire all_empty = c2u_posted_empty && c2u_np_empty && u2c_empty;
+  // bridge_open: driven by reset_drain FSM; low gates all ingress.
+  wire bridge_open;
+
+  // Error injection: flip bit 0 of the checksum byte when err_inj_en is asserted.
+  wire [WIDTH-1:0] c2u_wr_data_raw = translate_cxl_to_ucie(cxl_in_data);
+  wire [WIDTH-1:0] c2u_wr_data     = err_inj_en ?
+    {c2u_wr_data_raw[WIDTH-1:1], ~c2u_wr_data_raw[0]} : c2u_wr_data_raw;
+  wire [WIDTH-1:0] u2c_wr_data     = translate_ucie_to_cxl(ucie_in_data);
   wire [WIDTH-1:0] c2u_posted_rd_data;
   wire [WIDTH-1:0] c2u_np_rd_data;
 
   wire cxl_in_is_posted_w = is_posted(cxl_in_data);
 
-  // CXL input accepted when its target FIFO has space AND credits are available.
-  assign cxl_in_ready  = cxl_in_is_posted_w ?
+  // CXL input accepted when bridge is open AND its target FIFO has space AND credits are available.
+  assign cxl_in_ready  = bridge_open && (cxl_in_is_posted_w ?
                          (!c2u_posted_full && posted_credits_avail) :
-                         (!c2u_np_full && np_credits_avail);
+                         (!c2u_np_full && np_credits_avail));
 
-  assign ucie_in_ready = !u2c_full && cpl_credits_avail;
+  assign ucie_in_ready = bridge_open && !u2c_full && cpl_credits_avail;
   assign cxl_out_valid = !u2c_empty;
 
   // Egress arbiter: posted FIFO has priority (CXL spec: posted may bypass non-posted).
@@ -310,6 +323,17 @@ module cxl_ucie_bridge #(
     .consume  (u2c_wr),
     .ret      (u2c_rd),
     .available(cpl_credits_avail)
+  );
+
+  // --- Link readiness FSM ---
+
+  reset_drain u_reset_drain (
+    .clk       (clk),
+    .rst_n     (rst_n),
+    .link_up   (link_up),
+    .all_empty (all_empty),
+    .open      (bridge_open),
+    .drain_done(drain_done)
   );
 
   // --- FIFOs ---
@@ -423,6 +447,24 @@ module cxl_ucie_bridge #(
       assert (arb_sel_final == 1'b1);
   end
 
+  // Phase 4: link gating — ingress must be stalled when bridge is not open.
+  always @(*) begin
+    if (!bridge_open) begin
+      assert (cxl_in_ready  == 1'b0);
+      assert (ucie_in_ready == 1'b0);
+    end
+  end
+
+  // Phase 4: error injection — bit 0 of the translated packet is flipped iff err_inj_en.
+  always @(*) begin
+    if (err_inj_en) begin
+      assert (c2u_wr_data[0]         == ~c2u_wr_data_raw[0]);
+      assert (c2u_wr_data[WIDTH-1:1] ==  c2u_wr_data_raw[WIDTH-1:1]);
+    end else begin
+      assert (c2u_wr_data == c2u_wr_data_raw);
+    end
+  end
+
   // Covers: packet kind reachability and Phase 3 scenarios.
   always_ff @(posedge clk) begin
     if (rst_n) begin
@@ -437,6 +479,10 @@ module cxl_ucie_bridge #(
       cover (cxl_in_valid && !cxl_in_ready && !np_credits_avail);
       // Phase 3: posted bypasses non-posted (ordering domain property)
       cover (c2u_posted_rd && !c2u_np_empty);
+      // Phase 4: link gating and error injection reachability
+      cover (!bridge_open && cxl_in_valid);
+      cover (err_inj_en && c2u_np_wr);
+      cover (drain_done);
     end
   end
 `endif

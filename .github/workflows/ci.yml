@@ -35,7 +35,8 @@ jobs:
       - name: Lint RTL (no testbench)
         run: |
           verilator -Isrc --lint-only -Wall -top-module cxl_ucie_bridge \
-            src/sync_fifo.v src/credit_counter.v src/cxl_ucie_bridge.v
+            src/sync_fifo.v src/credit_counter.v src/reset_drain.v src/cxl_ucie_bridge.v
+          verilator -Isrc --lint-only -Wall -top-module cdc_sync src/cdc_sync.v
 
   formal:
     runs-on: ubuntu-latest
@@ -90,3 +91,23 @@ jobs:
           print("wrote", out)
           PY
           sby -f cxl_ucie_bridge_ci.sby
+
+      - name: SymbiYosys formal (bmc + cover, reset_drain)
+        working-directory: formal
+        run: |
+          set -euo pipefail
+          test -r "${GITHUB_WORKSPACE}/src/reset_drain.v"
+          python3 <<'PY'
+          import os
+          from pathlib import Path
+          root = Path(os.environ["GITHUB_WORKSPACE"])
+          assert (root / "src" / "reset_drain.v").is_file()
+          src = root / "formal" / "reset_drain.sby"
+          out = root / "formal" / "reset_drain_ci.sby"
+          text = src.read_text()
+          new = text.replace("../../../src", str(root / "src"))
+          assert new != text, "no path substitution made in reset_drain.sby"
+          out.write_text(new)
+          print("wrote", out)
+          PY
+          sby -f reset_drain_ci.sby

@@ -11,6 +11,9 @@ formal/sync_fifo_ci/
 formal/cxl_ucie_bridge_ci.sby
 formal/cxl_ucie_bridge_ci/
 formal/cxl_ucie_bridge/
+formal/reset_drain_ci.sby
+formal/reset_drain_ci/
+formal/reset_drain/
 formal/sync_fifo_ci_bmc/
 formal/sync_fifo_ci_cover/
 formal/*_bmc/
