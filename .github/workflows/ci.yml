@@ -35,7 +35,8 @@ jobs:
       - name: Lint RTL (no testbench)
         run: |
           verilator -Isrc --lint-only -Wall -top-module cxl_ucie_bridge \
-            src/sync_fifo.v src/credit_counter.v src/reset_drain.v src/cxl_ucie_bridge.v
+            src/async_fifo.v src/credit_counter.v src/reset_drain.v src/cdc_sync.v src/cxl_ucie_bridge.v
+          verilator -Isrc --lint-only -Wall -top-module async_fifo src/async_fifo.v
           verilator -Isrc --lint-only -Wall -top-module cdc_sync src/cdc_sync.v
 
   formal:

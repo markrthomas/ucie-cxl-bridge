@@ -7,18 +7,19 @@ bmc: mode bmc
 bmc: depth 16
 cover: mode cover
 cover: depth 32
+multiclock on
 
 [engines]
 smtbmc
 
 [script]
 # Yosys cwd is <taskdir>/src (e.g. formal/cxl_ucie_bridge_bmc/src); repo RTL is three levels up.
-bmc: read_verilog -sv -DFORMAL -I../../../src ../../../src/sync_fifo.v
-bmc: read_verilog -sv -DFORMAL -I../../../src ../../../src/credit_counter.v
+bmc: read_verilog -sv -DFORMAL -I../../../src ../../../src/async_fifo.v
+bmc: read_verilog -sv -DFORMAL -I../../../src ../../../src/cdc_sync.v
 bmc: read_verilog -sv -DFORMAL -I../../../src ../../../src/reset_drain.v
 bmc: read_verilog -sv -DFORMAL -I../../../src ../../../src/cxl_ucie_bridge.v
-cover: read_verilog -sv -DFORMAL -I../../../src ../../../src/sync_fifo.v
-cover: read_verilog -sv -DFORMAL -I../../../src ../../../src/credit_counter.v
+cover: read_verilog -sv -DFORMAL -I../../../src ../../../src/async_fifo.v
+cover: read_verilog -sv -DFORMAL -I../../../src ../../../src/cdc_sync.v
 cover: read_verilog -sv -DFORMAL -I../../../src ../../../src/reset_drain.v
 cover: read_verilog -sv -DFORMAL -I../../../src ../../../src/cxl_ucie_bridge.v
 prep -top cxl_ucie_bridge

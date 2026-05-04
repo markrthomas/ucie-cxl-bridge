@@ -1,7 +1,7 @@
 `timescale 1ns / 1ps
 
 // Stress testbench: bursts, random backpressure, concurrent directions, scoreboard.
-// Phase 3: split c2u scoreboard (posted vs. NP), ordering directed test.
+// Phase 5: dual-clock (clk=CXL, ucie_clk=UCIe); clock-ratio tests 1:1, 2:1, 1:3.
 
 `include "cxl_ucie_bridge_defs.vh"
 
@@ -14,7 +14,11 @@ module tb_cxl_ucie_bridge;
   localparam integer GOLD_SZ          = 32768;
 
   reg clk;
+  reg ucie_clk;
   reg rst_n;
+
+  // ucie_clk half-period (ns): changed per clock-ratio test.
+  real ucie_clk_half;
 
   reg         cxl_in_valid;
   reg [W-1:0] cxl_in_data;
@@ -44,6 +48,10 @@ module tb_cxl_ucie_bridge;
   integer     c2u_posted_gold_wr, c2u_posted_gold_rd;
   integer     c2u_np_gold_wr,     c2u_np_gold_rd;
 
+  reg [W-1:0] pending_c2u_data[GOLD_SZ];
+  reg         pending_c2u_posted[GOLD_SZ];
+  integer     c2u_pending_wr, c2u_pending_rd;
+
   reg [W-1:0] gold_u2c[GOLD_SZ];
   integer     u2c_gold_wr, u2c_gold_rd;
 
@@ -55,6 +63,7 @@ module tb_cxl_ucie_bridge;
     .FIFO_DEPTH (FIFO_DEPTH)
   ) dut (
     .clk(clk),
+    .ucie_clk(ucie_clk),
     .rst_n(rst_n),
     .cxl_in_valid(cxl_in_valid),
     .cxl_in_data(cxl_in_data),
@@ -75,6 +84,7 @@ module tb_cxl_ucie_bridge;
 
   cxl_ucie_bridge_chk #(.WIDTH(W)) u_chk (
     .clk(clk),
+    .ucie_clk(ucie_clk),
     .rst_n(rst_n),
     .ucie_out_valid(ucie_out_valid),
     .ucie_out_data(ucie_out_data),
@@ -91,7 +101,40 @@ module tb_cxl_ucie_bridge;
     end
   end
 
+  // CXL clock: 10 ns period (100 MHz)
   always #5 clk = ~clk;
+
+  // UCIe clock: phase-shifted so it never fires on the same timestamp as clk.
+  // Period is controlled by ucie_clk_half (set before each ratio test).
+  initial begin
+    ucie_clk = 1'b0;
+    #2.5;
+    forever begin
+      #(ucie_clk_half) ucie_clk = ~ucie_clk;
+    end
+  end
+
+  // Reset both clocks and run a named phase, then wait for FIFOs to settle.
+  task automatic do_reset;
+    begin
+      rst_n          = 1'b0;
+      cxl_in_valid   = 1'b0;
+      cxl_in_data    = {W{1'b0}};
+      ucie_out_ready = 1'b0;
+      ucie_in_valid  = 1'b0;
+      ucie_in_data   = {W{1'b0}};
+      cxl_out_ready  = 1'b0;
+      link_up        = 1'b0;
+      err_inj_en     = 1'b0;
+      c2u_pending_wr = 0;
+      c2u_pending_rd = 0;
+      repeat (6) @(posedge clk);
+      rst_n   = 1'b1;
+      link_up = 1'b1;
+      repeat (4) @(posedge clk);
+      repeat (4) @(posedge ucie_clk);
+    end
+  endtask
 
   function automatic [31:0] rnd32;
     input [31:0] s;
@@ -287,7 +330,7 @@ module tb_cxl_ucie_bridge;
     end
   endfunction
 
-  task automatic scoreboard_step;
+  task automatic scoreboard_step_clk;
     begin
       // c2u input: route expected output to posted or NP gold queue
       if (cxl_in_valid && cxl_in_ready) begin
@@ -309,45 +352,6 @@ module tb_cxl_ucie_bridge;
         c2u_sent = c2u_sent + 1;
       end
 
-      // c2u output: check against the appropriate gold queue
-      if (ucie_out_valid && ucie_out_ready) begin
-        if (is_ucie_posted(ucie_out_data)) begin
-          if (c2u_posted_gold_rd >= c2u_posted_gold_wr) begin
-            $display("FAIL: c2u posted pop underrun");
-            $finish(1);
-          end
-          if (ucie_out_data !== gold_c2u_posted[c2u_posted_gold_rd]) begin
-            $display("FAIL: c2u posted mismatch exp=%h got=%h",
-                     gold_c2u_posted[c2u_posted_gold_rd], ucie_out_data);
-            $finish(1);
-          end
-          c2u_posted_gold_rd = c2u_posted_gold_rd + 1;
-        end else begin
-          if (c2u_np_gold_rd >= c2u_np_gold_wr) begin
-            $display("FAIL: c2u np pop underrun");
-            $finish(1);
-          end
-          if (ucie_out_data !== gold_c2u_np[c2u_np_gold_rd]) begin
-            $display("FAIL: c2u np mismatch exp=%h got=%h",
-                     gold_c2u_np[c2u_np_gold_rd], ucie_out_data);
-            $finish(1);
-          end
-          c2u_np_gold_rd = c2u_np_gold_rd + 1;
-        end
-        c2u_rcvd = c2u_rcvd + 1;
-      end
-
-      // u2c scoreboard (unchanged)
-      if (ucie_in_valid && ucie_in_ready) begin
-        if (u2c_gold_wr >= GOLD_SZ) begin
-          $display("FAIL: gold_u2c overflow");
-          $finish(1);
-        end
-        gold_u2c[u2c_gold_wr] = expect_cxl_from_ucie(ucie_in_data);
-        u2c_gold_wr          = u2c_gold_wr + 1;
-        u2c_sent             = u2c_sent + 1;
-      end
-
       if (cxl_out_valid && cxl_out_ready) begin
         if (u2c_gold_rd >= u2c_gold_wr) begin
           $display("FAIL: u2c pop underrun");
@@ -360,11 +364,74 @@ module tb_cxl_ucie_bridge;
         u2c_gold_rd = u2c_gold_rd + 1;
         u2c_rcvd    = u2c_rcvd + 1;
       end
+
+      while (c2u_pending_rd < c2u_pending_wr) begin
+        if (pending_c2u_posted[c2u_pending_rd]) begin
+          if (c2u_posted_gold_rd >= c2u_posted_gold_wr) begin
+            $display("FAIL: c2u posted pop underrun");
+            $finish(1);
+          end
+          if (pending_c2u_data[c2u_pending_rd] !== gold_c2u_posted[c2u_posted_gold_rd]) begin
+            $display("FAIL: c2u posted mismatch exp=%h got=%h",
+                     gold_c2u_posted[c2u_posted_gold_rd], pending_c2u_data[c2u_pending_rd]);
+            $finish(1);
+          end
+          c2u_posted_gold_rd = c2u_posted_gold_rd + 1;
+        end else begin
+          if (c2u_np_gold_rd >= c2u_np_gold_wr) begin
+            $display("FAIL: c2u np pop underrun");
+            $finish(1);
+          end
+          if (pending_c2u_data[c2u_pending_rd] !== gold_c2u_np[c2u_np_gold_rd]) begin
+            $display("FAIL: c2u np mismatch exp=%h got=%h",
+                     gold_c2u_np[c2u_np_gold_rd], pending_c2u_data[c2u_pending_rd]);
+            $finish(1);
+          end
+          c2u_np_gold_rd = c2u_np_gold_rd + 1;
+        end
+        c2u_pending_rd = c2u_pending_rd + 1;
+        c2u_rcvd       = c2u_rcvd + 1;
+      end
+    end
+  endtask
+
+  task automatic scoreboard_step_ucie;
+    begin
+      // c2u output: buffer beats as they are observed; reconcile on clk.
+      if (ucie_out_valid && ucie_out_ready) begin
+        if (c2u_pending_wr >= GOLD_SZ) begin
+          $display("FAIL: c2u pending overflow");
+          $finish(1);
+        end
+        pending_c2u_data[c2u_pending_wr]   = ucie_out_data;
+        pending_c2u_posted[c2u_pending_wr]  = is_ucie_posted(ucie_out_data);
+        c2u_pending_wr = c2u_pending_wr + 1;
+      end
+
+      // u2c input: route expected output to gold queue
+      if (ucie_in_valid && ucie_in_ready) begin
+        if (u2c_gold_wr >= GOLD_SZ) begin
+          $display("FAIL: gold_u2c overflow");
+          $finish(1);
+        end
+        gold_u2c[u2c_gold_wr] = expect_cxl_from_ucie(ucie_in_data);
+        u2c_gold_wr          = u2c_gold_wr + 1;
+        u2c_sent             = u2c_sent + 1;
+      end
     end
   endtask
 
   initial begin
+    forever begin
+      @(posedge ucie_clk);
+      if (rst_n) scoreboard_step_ucie();
+    end
+  end
+
+  initial begin
     clk                  = 1'b0;
+    ucie_clk             = 1'b0;
+    ucie_clk_half        = 5.0;   // start 1:1 (both 10 ns)
     rst_n                = 1'b0;
     cxl_in_valid         = 1'b0;
     cxl_in_data          = {W{1'b0}};
@@ -379,6 +446,8 @@ module tb_cxl_ucie_bridge;
     c2u_posted_gold_rd   = 0;
     c2u_np_gold_wr       = 0;
     c2u_np_gold_rd       = 0;
+    c2u_pending_wr       = 0;
+    c2u_pending_rd       = 0;
     u2c_gold_wr          = 0;
     u2c_gold_rd          = 0;
     c2u_sent             = 0;
@@ -386,9 +455,10 @@ module tb_cxl_ucie_bridge;
     c2u_rcvd             = 0;
     u2c_rcvd             = 0;
 
-    repeat (4) @(posedge clk);
-    rst_n   = 1'b1;
-    link_up = 1'b1;   // open the bridge immediately after reset
+    // --- Clock ratio 1:1 (clk=100 MHz, ucie_clk=100 MHz) ---
+    $display("INFO: clock ratio 1:1  clk=100MHz ucie_clk=100MHz");
+    ucie_clk_half = 5.0;
+    do_reset();
 
     // --- Smoke 1: CXL.io IO_REQ (original sanity) ---
     @(posedge clk);
@@ -400,11 +470,11 @@ module tb_cxl_ucie_bridge;
     cxl_in_valid = 1'b0;
 
     wait (ucie_out_valid);
-    @(posedge clk);
     if (ucie_out_data !== expect_ucie_from_cxl(pack_cxl_io_req(CXL_IO_OP_MEM_RD, 8'h3c, 16'hbeef, 8'h04, 8'ha1, 8'h0f))) begin
       $display("FAIL: smoke io_req ucie_out_data got %h", ucie_out_data);
       $finish(1);
     end
+    @(posedge ucie_clk); #1;
 
     @(posedge clk);
     ucie_in_data   = pack_ucie_ad_cpl(UCIE_CPL_SC, 8'h5a, 16'h0040, 8'h04, 8'hc3, 8'h18, 8'h00);
@@ -433,10 +503,11 @@ module tb_cxl_ucie_bridge;
       @(posedge clk);
       while (!(cxl_in_valid && cxl_in_ready)) @(posedge clk);
       cxl_in_valid = 1'b0;
-      wait (ucie_out_valid); @(posedge clk);
+      wait (ucie_out_valid);
       if (ucie_out_data !== expect_ucie_from_cxl(pack_cxl_mem_rd(4'h1, 8'h11, 16'h2000, 8'h08, 8'hd4, 8'hf5))) begin
         $display("FAIL: smoke mem_rd got %h", ucie_out_data); $finish(1);
       end
+      @(posedge ucie_clk); #1;
 
       // CXL.mem write
       @(posedge clk);
@@ -445,10 +516,11 @@ module tb_cxl_ucie_bridge;
       @(posedge clk);
       while (!(cxl_in_valid && cxl_in_ready)) @(posedge clk);
       cxl_in_valid = 1'b0;
-      wait (ucie_out_valid); @(posedge clk);
+      wait (ucie_out_valid);
       if (ucie_out_data !== expect_ucie_from_cxl(pack_cxl_mem_wr(4'h2, 8'h22, 16'h4000, 8'h04, 8'he5, 8'ha3))) begin
         $display("FAIL: smoke mem_wr got %h", ucie_out_data); $finish(1);
       end
+      @(posedge ucie_clk); #1;
 
       // CXL.cache read
       @(posedge clk);
@@ -457,10 +529,11 @@ module tb_cxl_ucie_bridge;
       @(posedge clk);
       while (!(cxl_in_valid && cxl_in_ready)) @(posedge clk);
       cxl_in_valid = 1'b0;
-      wait (ucie_out_valid); @(posedge clk);
+      wait (ucie_out_valid);
       if (ucie_out_data !== expect_ucie_from_cxl(pack_cxl_cache_rd(4'h0, 8'h33, 16'h8000, 8'h02, 8'hf6, 8'h77))) begin
         $display("FAIL: smoke cache_rd got %h", ucie_out_data); $finish(1);
       end
+      @(posedge ucie_clk); #1;
 
       // CXL.cache write
       @(posedge clk);
@@ -469,10 +542,11 @@ module tb_cxl_ucie_bridge;
       @(posedge clk);
       while (!(cxl_in_valid && cxl_in_ready)) @(posedge clk);
       cxl_in_valid = 1'b0;
-      wait (ucie_out_valid); @(posedge clk);
+      wait (ucie_out_valid);
       if (ucie_out_data !== expect_ucie_from_cxl(pack_cxl_cache_wr(4'h3, 8'h44, 16'hc000, 8'h01, 8'ha7, 8'h5b))) begin
         $display("FAIL: smoke cache_wr got %h", ucie_out_data); $finish(1);
       end
+      @(posedge ucie_clk); #1;
 
       // UCIe MEM_CPL -> CXL MEM_CPL
       upkt = pack_ucie_mem_cpl(UCIE_CPL_SC, 8'h11, 16'h0800, 8'h08, 8'hd4, 8'hf5, 8'h00);
@@ -564,26 +638,35 @@ module tb_cxl_ucie_bridge;
       @(posedge clk);
       ucie_out_ready = 1'b1;
 
-      wait (ucie_out_valid); @(posedge clk);
+      // UCIe outputs live in ucie_clk domain: check immediately after wait (zero simulation
+      // time, no clock edge can fire) then use @(posedge ucie_clk) to advance the pointer.
+      wait (ucie_out_valid);
       if (ucie_out_data !== exp_posted0) begin
         $display("FAIL: ordering[0] want posted MEM_WR=%h got=%h", exp_posted0, ucie_out_data);
         $finish(1);
       end
-      wait (ucie_out_valid); @(posedge clk);
+      @(posedge ucie_clk); #1;  // consume; #1 lets NBA (r_ptr_bin++) take effect
+
+      wait (ucie_out_valid);
       if (ucie_out_data !== exp_posted1) begin
         $display("FAIL: ordering[1] want posted CACHE_WR=%h got=%h", exp_posted1, ucie_out_data);
         $finish(1);
       end
-      wait (ucie_out_valid); @(posedge clk);
+      @(posedge ucie_clk); #1;
+
+      wait (ucie_out_valid);
       if (ucie_out_data !== exp_np0) begin
         $display("FAIL: ordering[2] want np MEM_RD=%h got=%h", exp_np0, ucie_out_data);
         $finish(1);
       end
-      wait (ucie_out_valid); @(posedge clk);
+      @(posedge ucie_clk); #1;
+
+      wait (ucie_out_valid);
       if (ucie_out_data !== exp_np1) begin
         $display("FAIL: ordering[3] want np CACHE_RD=%h got=%h", exp_np1, ucie_out_data);
         $finish(1);
       end
+      @(posedge ucie_clk); #1;
     end
 
     // --- Smoke 4: link_up gating ---
@@ -637,7 +720,6 @@ module tb_cxl_ucie_bridge;
       err_inj_en   = 1'b0;
 
       wait (ucie_out_valid);
-      @(posedge clk);
       if (ucie_out_data !== {expected_clean[W-1:1], ~expected_clean[0]}) begin
         $display("FAIL: err_inj: expected checksum bit 0 flipped exp=%h got=%h",
                  {expected_clean[W-1:1], ~expected_clean[0]}, ucie_out_data);
@@ -646,6 +728,99 @@ module tb_cxl_ucie_bridge;
 
       $display("PASS smoke error_injection");
     end
+
+    // --- Smoke 6: clock ratio 2:1 (ucie_clk faster: 5 ns period = 200 MHz) ---
+    // Re-reset with new clock ratio; run a quick c2u round-trip to prove CDC works.
+    begin : blk_ratio_2_1
+      $display("INFO: clock ratio 2:1  clk=100MHz ucie_clk=200MHz");
+      ucie_clk_half = 2.5;
+      do_reset();
+      c2u_posted_gold_wr = 0; c2u_posted_gold_rd = 0;
+      c2u_np_gold_wr     = 0; c2u_np_gold_rd     = 0;
+      u2c_gold_wr        = 0; u2c_gold_rd        = 0;
+
+      // CXL.mem read (NP)
+      @(posedge clk);
+      cxl_in_data    = pack_cxl_mem_rd(4'h1, 8'hA0, 16'h1234, 8'h04, 8'h10, 8'h00);
+      cxl_in_valid   = 1'b1;
+      ucie_out_ready = 1'b1;
+      @(posedge clk);
+      while (!(cxl_in_valid && cxl_in_ready)) @(posedge clk);
+      cxl_in_valid = 1'b0;
+      wait (ucie_out_valid); @(posedge ucie_clk);
+      if (ucie_out_data !== expect_ucie_from_cxl(
+            pack_cxl_mem_rd(4'h1, 8'hA0, 16'h1234, 8'h04, 8'h10, 8'h00))) begin
+        $display("FAIL: ratio_2_1 c2u got=%h", ucie_out_data); $finish(1);
+      end
+
+      // UCIe MEM_CPL -> CXL
+      begin : b21_u2c
+        reg [W-1:0] upkt;
+        upkt = pack_ucie_mem_cpl(UCIE_CPL_SC, 8'hA0, 16'h0400, 8'h04, 8'h10, 8'hf5, 8'h00);
+        upkt[PKT_MISC_MSB:PKT_MISC_LSB] = bridge_checksum(upkt);
+        @(posedge ucie_clk);
+        ucie_in_data = upkt; ucie_in_valid = 1'b1; cxl_out_ready = 1'b1;
+        @(posedge ucie_clk);
+        while (!(ucie_in_valid && ucie_in_ready)) @(posedge ucie_clk);
+        ucie_in_valid = 1'b0;
+        wait (cxl_out_valid); @(posedge clk);
+        if (cxl_out_data !== expect_cxl_from_ucie(upkt)) begin
+          $display("FAIL: ratio_2_1 u2c got=%h", cxl_out_data); $finish(1);
+        end
+      end
+
+      $display("PASS smoke ratio_2_1");
+    end
+
+    // --- Smoke 7: clock ratio 1:3 (ucie_clk slower: 15 ns period ~67 MHz) ---
+    begin : blk_ratio_1_3
+      $display("INFO: clock ratio 1:3  clk=100MHz ucie_clk=~67MHz");
+      ucie_clk_half = 7.5;
+      do_reset();
+      c2u_posted_gold_wr = 0; c2u_posted_gold_rd = 0;
+      c2u_np_gold_wr     = 0; c2u_np_gold_rd     = 0;
+      u2c_gold_wr        = 0; u2c_gold_rd        = 0;
+
+      // CXL.cache write (posted)
+      @(posedge clk);
+      cxl_in_data    = pack_cxl_cache_wr(4'h2, 8'hB0, 16'h5678, 8'h02, 8'h20, 8'h00);
+      cxl_in_valid   = 1'b1;
+      ucie_out_ready = 1'b1;
+      @(posedge clk);
+      while (!(cxl_in_valid && cxl_in_ready)) @(posedge clk);
+      cxl_in_valid = 1'b0;
+      wait (ucie_out_valid); @(posedge ucie_clk);
+      if (ucie_out_data !== expect_ucie_from_cxl(
+            pack_cxl_cache_wr(4'h2, 8'hB0, 16'h5678, 8'h02, 8'h20, 8'h00))) begin
+        $display("FAIL: ratio_1_3 c2u got=%h", ucie_out_data); $finish(1);
+      end
+
+      // UCIe AD_CPL -> CXL
+      begin : b13_u2c
+        reg [W-1:0] upkt;
+        upkt = pack_ucie_ad_cpl(UCIE_CPL_SC, 8'hB0, 16'h0200, 8'h02, 8'h20, 8'h18, 8'h00);
+        upkt[PKT_MISC_MSB:PKT_MISC_LSB] = bridge_checksum(upkt);
+        @(posedge ucie_clk);
+        ucie_in_data = upkt; ucie_in_valid = 1'b1; cxl_out_ready = 1'b1;
+        @(posedge ucie_clk);
+        while (!(ucie_in_valid && ucie_in_ready)) @(posedge ucie_clk);
+        ucie_in_valid = 1'b0;
+        wait (cxl_out_valid); @(posedge clk);
+        if (cxl_out_data !== expect_cxl_from_ucie(upkt)) begin
+          $display("FAIL: ratio_1_3 u2c got=%h", cxl_out_data); $finish(1);
+        end
+      end
+
+      $display("PASS smoke ratio_1_3");
+    end
+
+    // Reset back to 1:1 for the stress run
+    $display("INFO: returning to clock ratio 1:1 for stress");
+    ucie_clk_half = 5.0;
+    do_reset();
+    c2u_posted_gold_wr = 0; c2u_posted_gold_rd = 0;
+    c2u_np_gold_wr     = 0; c2u_np_gold_rd     = 0;
+    u2c_gold_wr        = 0; u2c_gold_rd        = 0;
 
     // --- Stress: concurrent traffic + random ready ---
     c2u_sent = 0;
@@ -657,7 +832,7 @@ module tb_cxl_ucie_bridge;
       @(posedge clk);
 
       // Scoreboard: transfers complete on this edge (inputs were stable into posedge)
-      scoreboard_step();
+      scoreboard_step_clk();
 
       // Random sink ready (bias toward often-on to keep queues moving)
       seed           = rnd32(seed);
@@ -749,7 +924,7 @@ module tb_cxl_ucie_bridge;
 
     // Drain: hold both sinks ready, stop new sources
     @(posedge clk);
-    scoreboard_step();
+    scoreboard_step_clk();
 
     cxl_in_valid   <= 1'b0;
     ucie_in_valid  <= 1'b0;
@@ -758,33 +933,6 @@ module tb_cxl_ucie_bridge;
 
     repeat (FIFO_DEPTH + 64) begin
       @(posedge clk);
-
-      if (ucie_out_valid && ucie_out_ready) begin
-        if (is_ucie_posted(ucie_out_data)) begin
-          if (c2u_posted_gold_rd >= c2u_posted_gold_wr) begin
-            $display("FAIL: drain c2u posted underrun");
-            $finish(1);
-          end
-          if (ucie_out_data !== gold_c2u_posted[c2u_posted_gold_rd]) begin
-            $display("FAIL: drain c2u posted mismatch exp=%h got=%h",
-                     gold_c2u_posted[c2u_posted_gold_rd], ucie_out_data);
-            $finish(1);
-          end
-          c2u_posted_gold_rd = c2u_posted_gold_rd + 1;
-        end else begin
-          if (c2u_np_gold_rd >= c2u_np_gold_wr) begin
-            $display("FAIL: drain c2u np underrun");
-            $finish(1);
-          end
-          if (ucie_out_data !== gold_c2u_np[c2u_np_gold_rd]) begin
-            $display("FAIL: drain c2u np mismatch exp=%h got=%h",
-                     gold_c2u_np[c2u_np_gold_rd], ucie_out_data);
-            $finish(1);
-          end
-          c2u_np_gold_rd = c2u_np_gold_rd + 1;
-        end
-        c2u_rcvd = c2u_rcvd + 1;
-      end
 
       if (cxl_out_valid && cxl_out_ready) begin
         if (u2c_gold_rd >= u2c_gold_wr) begin
@@ -800,6 +948,11 @@ module tb_cxl_ucie_bridge;
       end
     end
 
+    repeat (8) begin
+      @(posedge clk);
+      scoreboard_step_clk();
+    end
+
     if (c2u_posted_gold_rd !== c2u_posted_gold_wr) begin
       $display("FAIL: c2u posted gold not empty wr=%0d rd=%0d",
                c2u_posted_gold_wr, c2u_posted_gold_rd);
@@ -808,6 +961,11 @@ module tb_cxl_ucie_bridge;
     if (c2u_np_gold_rd !== c2u_np_gold_wr) begin
       $display("FAIL: c2u np gold not empty wr=%0d rd=%0d",
                c2u_np_gold_wr, c2u_np_gold_rd);
+      $finish(1);
+    end
+    if (c2u_pending_rd !== c2u_pending_wr) begin
+      $display("FAIL: c2u pending not empty wr=%0d rd=%0d",
+               c2u_pending_wr, c2u_pending_rd);
       $finish(1);
     end
     if (u2c_gold_rd !== u2c_gold_wr) begin
@@ -849,7 +1007,7 @@ module tb_cxl_ucie_bridge;
     for (cyc = 0; cyc < NUM_STRESS_HEAVY; cyc = cyc + 1) begin
       @(posedge clk);
 
-      scoreboard_step();
+      scoreboard_step_clk();
 
       seed           = rnd32(seed);
       ucie_out_ready <= (seed % 10) < 2;
@@ -937,7 +1095,7 @@ module tb_cxl_ucie_bridge;
     end
 
     @(posedge clk);
-    scoreboard_step();
+    scoreboard_step_clk();
 
     cxl_in_valid   <= 1'b0;
     ucie_in_valid  <= 1'b0;
@@ -946,33 +1104,6 @@ module tb_cxl_ucie_bridge;
 
     repeat (FIFO_DEPTH + 128) begin
       @(posedge clk);
-
-      if (ucie_out_valid && ucie_out_ready) begin
-        if (is_ucie_posted(ucie_out_data)) begin
-          if (c2u_posted_gold_rd >= c2u_posted_gold_wr) begin
-            $display("FAIL: heavy drain c2u posted underrun");
-            $finish(1);
-          end
-          if (ucie_out_data !== gold_c2u_posted[c2u_posted_gold_rd]) begin
-            $display("FAIL: heavy drain c2u posted mismatch exp=%h got=%h",
-                     gold_c2u_posted[c2u_posted_gold_rd], ucie_out_data);
-            $finish(1);
-          end
-          c2u_posted_gold_rd = c2u_posted_gold_rd + 1;
-        end else begin
-          if (c2u_np_gold_rd >= c2u_np_gold_wr) begin
-            $display("FAIL: heavy drain c2u np underrun");
-            $finish(1);
-          end
-          if (ucie_out_data !== gold_c2u_np[c2u_np_gold_rd]) begin
-            $display("FAIL: heavy drain c2u np mismatch exp=%h got=%h",
-                     gold_c2u_np[c2u_np_gold_rd], ucie_out_data);
-            $finish(1);
-          end
-          c2u_np_gold_rd = c2u_np_gold_rd + 1;
-        end
-        c2u_rcvd = c2u_rcvd + 1;
-      end
 
       if (cxl_out_valid && cxl_out_ready) begin
         if (u2c_gold_rd >= u2c_gold_wr) begin
@@ -989,6 +1120,11 @@ module tb_cxl_ucie_bridge;
       end
     end
 
+    repeat (8) begin
+      @(posedge clk);
+      scoreboard_step_clk();
+    end
+
     if (c2u_posted_gold_rd !== c2u_posted_gold_wr) begin
       $display("FAIL: heavy c2u posted gold not empty wr=%0d rd=%0d",
                c2u_posted_gold_wr, c2u_posted_gold_rd);
@@ -997,6 +1133,11 @@ module tb_cxl_ucie_bridge;
     if (c2u_np_gold_rd !== c2u_np_gold_wr) begin
       $display("FAIL: heavy c2u np gold not empty wr=%0d rd=%0d",
                c2u_np_gold_wr, c2u_np_gold_rd);
+      $finish(1);
+    end
+    if (c2u_pending_rd !== c2u_pending_wr) begin
+      $display("FAIL: heavy c2u pending not empty wr=%0d rd=%0d",
+               c2u_pending_wr, c2u_pending_rd);
       $finish(1);
     end
     if (u2c_gold_rd !== u2c_gold_wr) begin
