@@ -1,0 +1,165 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites>
+<testsuite timestamp="2026-05-06T19:32:39" hostname="MarkThomas" package="cxl_ucie_bridge" id="0" name="bmc" tests="39" errors="0" failures="2" time="4" skipped="38">
+<properties>
+<property name="os" value="Linux"/>
+<property name="expect" value="PASS"/>
+<property name="status" value="FAIL"/>
+</properties>
+<testcase classname="bmc" name="build execution" time="0">
+<failure type="FAIL" message="Task returned status FAIL." />
+</testcase>
+<testcase classname="bmc" name="Property COVER in cxl_ucie_bridge at ../../../../src/cxl_ucie_bridge.v:451.7-451.92" time="0" type="COVER" location="../../../../src/cxl_ucie_bridge.v:451.7-451.92" id="_witness_.cover_cover_____________src_cxl_ucie_bridge_v_451_288">
+<skipped />
+</testcase>
+<testcase classname="bmc" name="Property COVER in cxl_ucie_bridge at ../../../../src/cxl_ucie_bridge.v:452.7-452.92" time="0" type="COVER" location="../../../../src/cxl_ucie_bridge.v:452.7-452.92" id="_witness_.cover_cover_____________src_cxl_ucie_bridge_v_452_291">
+<skipped />
+</testcase>
+<testcase classname="bmc" name="Property COVER in cxl_ucie_bridge at ../../../../src/cxl_ucie_bridge.v:453.7-453.94" time="0" type="COVER" location="../../../../src/cxl_ucie_bridge.v:453.7-453.94" id="_witness_.cover_cover_____________src_cxl_ucie_bridge_v_453_294">
+<skipped />
+</testcase>
+<testcase classname="bmc" name="Property COVER in cxl_ucie_bridge at ../../../../src/cxl_ucie_bridge.v:454.7-454.94" time="0" type="COVER" location="../../../../src/cxl_ucie_bridge.v:454.7-454.94" id="_witness_.cover_cover_____________src_cxl_ucie_bridge_v_454_297">
+<skipped />
+</testcase>
+<testcase classname="bmc" name="Property COVER in cxl_ucie_bridge at ../../../../src/cxl_ucie_bridge.v:455.7-455.60" time="0" type="COVER" location="../../../../src/cxl_ucie_bridge.v:455.7-455.60" id="_witness_.cover_cover_____________src_cxl_ucie_bridge_v_455_300">
+<skipped />
+</testcase>
+<testcase classname="bmc" name="Property COVER in cxl_ucie_bridge at ../../../../src/cxl_ucie_bridge.v:456.7-456.38" time="0" type="COVER" location="../../../../src/cxl_ucie_bridge.v:456.7-456.38" id="_witness_.cover_cover_____________src_cxl_ucie_bridge_v_456_305">
+<skipped />
+</testcase>
+<testcase classname="bmc" name="Property COVER in cxl_ucie_bridge at ../../../../src/cxl_ucie_bridge.v:457.7-457.25" time="0" type="COVER" location="../../../../src/cxl_ucie_bridge.v:457.7-457.25" id="_witness_.cover_cover_____________src_cxl_ucie_bridge_v_457_307">
+<skipped />
+</testcase>
+<testcase classname="bmc" name="Property COVER in cxl_ucie_bridge at ../../../../src/cxl_ucie_bridge.v:464.7-464.96" time="0" type="COVER" location="../../../../src/cxl_ucie_bridge.v:464.7-464.96" id="_witness_.cover_cover_____________src_cxl_ucie_bridge_v_464_309">
+<skipped />
+</testcase>
+<testcase classname="bmc" name="Property COVER in cxl_ucie_bridge at ../../../../src/cxl_ucie_bridge.v:465.7-465.98" time="0" type="COVER" location="../../../../src/cxl_ucie_bridge.v:465.7-465.98" id="_witness_.cover_cover_____________src_cxl_ucie_bridge_v_465_312">
+<skipped />
+</testcase>
+<testcase classname="bmc" name="Property COVER in cxl_ucie_bridge at ../../../../src/cxl_ucie_bridge.v:466.7-466.47" time="0" type="COVER" location="../../../../src/cxl_ucie_bridge.v:466.7-466.47" id="_witness_.cover_cover_____________src_cxl_ucie_bridge_v_466_315">
+<skipped />
+</testcase>
+<testcase classname="bmc" name="Property ASSERT in cxl_ucie_bridge at ../../../../src/cxl_ucie_bridge.v:376.7-376.78" time="0" type="ASSERT" location="../../../../src/cxl_ucie_bridge.v:376.7-376.78" id="_witness_.assert_assert_____________src_cxl_ucie_bridge_v_376_201">
+<skipped />
+</testcase>
+<testcase classname="bmc" name="Property ASSERT in cxl_ucie_bridge at ../../../../src/cxl_ucie_bridge.v:378.7-378.77" time="0" type="ASSERT" location="../../../../src/cxl_ucie_bridge.v:378.7-378.77" id="_witness_.assert_assert_____________src_cxl_ucie_bridge_v_378_203">
+<skipped />
+</testcase>
+<testcase classname="bmc" name="Property ASSERT in cxl_ucie_bridge at ../../../../src/cxl_ucie_bridge.v:381.7-381.73" time="0" type="ASSERT" location="../../../../src/cxl_ucie_bridge.v:381.7-381.73" id="_witness_.assert_assert_____________src_cxl_ucie_bridge_v_381_206">
+<skipped />
+</testcase>
+<testcase classname="bmc" name="Property ASSERT in cxl_ucie_bridge at ../../../../src/cxl_ucie_bridge.v:383.7-383.73" time="0" type="ASSERT" location="../../../../src/cxl_ucie_bridge.v:383.7-383.73" id="_witness_.assert_assert_____________src_cxl_ucie_bridge_v_383_209">
+<skipped />
+</testcase>
+<testcase classname="bmc" name="Property ASSERT in cxl_ucie_bridge at ../../../../src/cxl_ucie_bridge.v:385.7-385.75" time="0" type="ASSERT" location="../../../../src/cxl_ucie_bridge.v:385.7-385.75" id="_witness_.assert_assert_____________src_cxl_ucie_bridge_v_385_212">
+<skipped />
+</testcase>
+<testcase classname="bmc" name="Property ASSERT in cxl_ucie_bridge at ../../../../src/cxl_ucie_bridge.v:387.7-387.75" time="0" type="ASSERT" location="../../../../src/cxl_ucie_bridge.v:387.7-387.75" id="_witness_.assert_assert_____________src_cxl_ucie_bridge_v_387_215">
+<skipped />
+</testcase>
+<testcase classname="bmc" name="Property ASSERT in cxl_ucie_bridge at ../../../../src/cxl_ucie_bridge.v:390.7-390.77" time="0" type="ASSERT" location="../../../../src/cxl_ucie_bridge.v:390.7-390.77" id="_witness_.assert_assert_____________src_cxl_ucie_bridge_v_390_219">
+<skipped />
+</testcase>
+<testcase classname="bmc" name="Property ASSERT in cxl_ucie_bridge at ../../../../src/cxl_ucie_bridge.v:392.7-392.78" time="0" type="ASSERT" location="../../../../src/cxl_ucie_bridge.v:392.7-392.78" id="_witness_.assert_assert_____________src_cxl_ucie_bridge_v_392_223">
+<skipped />
+</testcase>
+<testcase classname="bmc" name="Property ASSERT in cxl_ucie_bridge at ../../../../src/cxl_ucie_bridge.v:394.7-394.80" time="0" type="ASSERT" location="../../../../src/cxl_ucie_bridge.v:394.7-394.80" id="_witness_.assert_assert_____________src_cxl_ucie_bridge_v_394_227">
+<skipped />
+</testcase>
+<testcase classname="bmc" name="Property ASSERT in cxl_ucie_bridge at ../../../../src/cxl_ucie_bridge.v:397.7-397.78" time="0" type="ASSERT" location="../../../../src/cxl_ucie_bridge.v:397.7-397.78" id="_witness_.assert_assert_____________src_cxl_ucie_bridge_v_397_232">
+<skipped />
+</testcase>
+<testcase classname="bmc" name="Property ASSERT in cxl_ucie_bridge at ../../../../src/cxl_ucie_bridge.v:399.7-399.78" time="0" type="ASSERT" location="../../../../src/cxl_ucie_bridge.v:399.7-399.78" id="_witness_.assert_assert_____________src_cxl_ucie_bridge_v_399_237">
+<skipped />
+</testcase>
+<testcase classname="bmc" name="Property ASSERT in cxl_ucie_bridge at ../../../../src/cxl_ucie_bridge.v:401.7-401.78" time="0" type="ASSERT" location="../../../../src/cxl_ucie_bridge.v:401.7-401.78" id="_witness_.assert_assert_____________src_cxl_ucie_bridge_v_401_242">
+<skipped />
+</testcase>
+<testcase classname="bmc" name="Property ASSERT in cxl_ucie_bridge at ../../../../src/cxl_ucie_bridge.v:405.7-405.78" time="0" type="ASSERT" location="../../../../src/cxl_ucie_bridge.v:405.7-405.78" id="_witness_.assert_assert_____________src_cxl_ucie_bridge_v_405_249">
+<skipped />
+</testcase>
+<testcase classname="bmc" name="Property ASSERT in cxl_ucie_bridge at ../../../../src/cxl_ucie_bridge.v:411.7-411.37" time="0" type="ASSERT" location="../../../../src/cxl_ucie_bridge.v:411.7-411.37" id="_witness_.assert_assert_____________src_cxl_ucie_bridge_v_411_253">
+<skipped />
+</testcase>
+<testcase classname="bmc" name="Property ASSERT in cxl_ucie_bridge at ../../../../src/cxl_ucie_bridge.v:412.7-412.65" time="0" type="ASSERT" location="../../../../src/cxl_ucie_bridge.v:412.7-412.65" id="_witness_.assert_assert_____________src_cxl_ucie_bridge_v_412_255">
+<skipped />
+</testcase>
+<testcase classname="bmc" name="Property ASSERT in cxl_ucie_bridge at ../../../../src/cxl_ucie_bridge.v:419.7-419.61" time="0" type="ASSERT" location="../../../../src/cxl_ucie_bridge.v:419.7-419.61" id="_witness_.assert_assert_____________src_cxl_ucie_bridge_v_419_260">
+<skipped />
+</testcase>
+<testcase classname="bmc" name="Property ASSERT in cxl_ucie_bridge at ../../../../src/cxl_ucie_bridge.v:420.7-420.69" time="0" type="ASSERT" location="../../../../src/cxl_ucie_bridge.v:420.7-420.69" id="_witness_.assert_assert_____________src_cxl_ucie_bridge_v_420_263">
+<skipped />
+</testcase>
+<testcase classname="bmc" name="Property ASSERT in cxl_ucie_bridge at ../../../../src/cxl_ucie_bridge.v:422.7-422.46" time="0" type="ASSERT" location="../../../../src/cxl_ucie_bridge.v:422.7-422.46" id="_witness_.assert_assert_____________src_cxl_ucie_bridge_v_422_265">
+<skipped />
+</testcase>
+<testcase classname="bmc" name="Property ASSERT in cxl_ucie_bridge at ../../../../src/cxl_ucie_bridge.v:430.9-430.45" time="0" type="ASSERT" location="../../../../src/cxl_ucie_bridge.v:430.9-430.45" id="_witness_.assert_assert_____________src_cxl_ucie_bridge_v_430_269">
+<skipped />
+</testcase>
+<testcase classname="bmc" name="Property ASSERT in cxl_ucie_bridge at ../../../../src/cxl_ucie_bridge.v:432.9-432.45" time="0" type="ASSERT" location="../../../../src/cxl_ucie_bridge.v:432.9-432.45" id="_witness_.assert_assert_____________src_cxl_ucie_bridge_v_432_272">
+<skipped />
+</testcase>
+<testcase classname="bmc" name="Property ASSERT in cxl_ucie_bridge at ../../../../src/cxl_ucie_bridge.v:440.9-440.48" time="0" type="ASSERT" location="../../../../src/cxl_ucie_bridge.v:440.9-440.48" id="_witness_.assert_assert_____________src_cxl_ucie_bridge_v_440_277">
+<skipped />
+</testcase>
+<testcase classname="bmc" name="Property ASSERT in cxl_ucie_bridge at ../../../../src/cxl_ucie_bridge.v:441.9-441.49" time="0" type="ASSERT" location="../../../../src/cxl_ucie_bridge.v:441.9-441.49" id="_witness_.assert_assert_____________src_cxl_ucie_bridge_v_441_279">
+<skipped />
+</testcase>
+<testcase classname="bmc" name="Property ASSERT in cxl_ucie_bridge at ../../../../src/cxl_ucie_bridge.v:444.9-444.39" time="0" type="ASSERT" location="../../../../src/cxl_ucie_bridge.v:444.9-444.39" id="_witness_.assert_assert_____________src_cxl_ucie_bridge_v_444_285">
+<skipped />
+</testcase>
+<testcase classname="bmc" name="Property COVER in cxl_ucie_bridge/u_reset_drain at ../../../../src/reset_drain.v:53.7-53.28" time="0" type="COVER" location="../../../../src/reset_drain.v:53.7-53.28" id="_witness_.cover_cover_____________src_reset_drain_v_53_52">
+<skipped />
+</testcase>
+<testcase classname="bmc" name="Property COVER in cxl_ucie_bridge/u_reset_drain at ../../../../src/reset_drain.v:54.7-54.31" time="0" type="COVER" location="../../../../src/reset_drain.v:54.7-54.31" id="_witness_.cover_cover_____________src_reset_drain_v_54_54">
+<skipped />
+</testcase>
+<testcase classname="bmc" name="Property COVER in cxl_ucie_bridge/u_reset_drain at ../../../../src/reset_drain.v:56.7-56.57" time="0" type="COVER" location="../../../../src/reset_drain.v:56.7-56.57" id="_witness_.cover_cover_____________src_reset_drain_v_56_56">
+<skipped />
+</testcase>
+<testcase classname="bmc" name="Property ASSERT in cxl_ucie_bridge/u_reset_drain at ../../../../src/reset_drain.v:47.7-47.39" time="0" type="ASSERT" location="../../../../src/reset_drain.v:47.7-47.39" id="_witness_.assert_assert_____________src_reset_drain_v_47_45" tracefile="engine_0/trace.vcd">
+<failure type="ASSERT" message="Property ASSERT in cxl_ucie_bridge/u_reset_drain at ../../../../src/reset_drain.v:47.7-47.39 failed. Trace file: engine_0/trace.vcd" />
+</testcase>
+<testcase classname="bmc" name="Property ASSERT in cxl_ucie_bridge/u_reset_drain at ../../../../src/reset_drain.v:49.7-49.29" time="0" type="ASSERT" location="../../../../src/reset_drain.v:49.7-49.29" id="_witness_.assert_assert_____________src_reset_drain_v_49_48">
+<skipped />
+</testcase>
+<testcase classname="bmc" name="Property ASSERT in cxl_ucie_bridge/u_reset_drain at ../../../../src/reset_drain.v:51.7-51.39" time="0" type="ASSERT" location="../../../../src/reset_drain.v:51.7-51.39" id="_witness_.assert_assert_____________src_reset_drain_v_51_50">
+<skipped />
+</testcase>
+<system-out>SBY 19:32:36 [cxl_ucie_bridge_bmc] Removing directory '/home/markt/proj/ucie-cxl-bridge/verification/formal/cxl_ucie_bridge_bmc'.
+SBY 19:32:36 [cxl_ucie_bridge_bmc] engine_0: smtbmc
+SBY 19:32:36 [cxl_ucie_bridge_bmc] base: starting process &quot;cd cxl_ucie_bridge_bmc/src; yosys -ql ../model/design.log ../model/design.ys&quot;
+SBY 19:32:36 [cxl_ucie_bridge_bmc] base: Warning: Replacing memory \mem with list of registers. See ../../../../src/async_fifo.v:72
+SBY 19:32:37 [cxl_ucie_bridge_bmc] base: finished (returncode=0)
+SBY 19:32:37 [cxl_ucie_bridge_bmc] prep: starting process &quot;cd cxl_ucie_bridge_bmc/model; yosys -ql design_prep.log design_prep.ys&quot;
+SBY 19:32:38 [cxl_ucie_bridge_bmc] prep: finished (returncode=0)
+SBY 19:32:38 [cxl_ucie_bridge_bmc] smt2: starting process &quot;cd cxl_ucie_bridge_bmc/model; yosys -ql design_smt2.log design_smt2.ys&quot;
+SBY 19:32:38 [cxl_ucie_bridge_bmc] smt2: finished (returncode=0)
+SBY 19:32:38 [cxl_ucie_bridge_bmc] engine_0: starting process &quot;cd cxl_ucie_bridge_bmc; yosys-smtbmc --presat --unroll --noprogress -t 16  --append 0 --dump-vcd engine_0/trace.vcd --dump-yw engine_0/trace.yw --dump-vlogtb engine_0/trace_tb.v --dump-smtc engine_0/trace.smtc model/design_smt2.smt2&quot;
+SBY 19:32:38 [cxl_ucie_bridge_bmc] engine_0: ##   0:00:00  Solver: yices
+SBY 19:32:38 [cxl_ucie_bridge_bmc] engine_0: ##   0:00:00  Checking assumptions in step 0..
+SBY 19:32:38 [cxl_ucie_bridge_bmc] engine_0: ##   0:00:00  Checking assertions in step 0..
+SBY 19:32:38 [cxl_ucie_bridge_bmc] engine_0: ##   0:00:00  Checking assumptions in step 1..
+SBY 19:32:38 [cxl_ucie_bridge_bmc] engine_0: ##   0:00:00  Checking assertions in step 1..
+SBY 19:32:38 [cxl_ucie_bridge_bmc] engine_0: ##   0:00:00  Checking assumptions in step 2..
+SBY 19:32:38 [cxl_ucie_bridge_bmc] engine_0: ##   0:00:00  Checking assertions in step 2..
+SBY 19:32:38 [cxl_ucie_bridge_bmc] engine_0: ##   0:00:00  BMC failed!
+SBY 19:32:38 [cxl_ucie_bridge_bmc] engine_0: ##   0:00:00  Assert failed in cxl_ucie_bridge.u_reset_drain: ../../../../src/reset_drain.v:47.7-47.39 (_witness_.assert_assert_____________src_reset_drain_v_47_45)
+SBY 19:32:38 [cxl_ucie_bridge_bmc] engine_0: ##   0:00:00  Writing trace to VCD file: engine_0/trace.vcd
+SBY 19:32:38 [cxl_ucie_bridge_bmc] engine_0: ##   0:00:00  Writing trace to Verilog testbench: engine_0/trace_tb.v
+SBY 19:32:38 [cxl_ucie_bridge_bmc] engine_0: ##   0:00:00  Writing trace to constraints file: engine_0/trace.smtc
+SBY 19:32:38 [cxl_ucie_bridge_bmc] engine_0: ##   0:00:00  Writing trace to Yosys witness file: engine_0/trace.yw
+SBY 19:32:38 [cxl_ucie_bridge_bmc] engine_0: ##   0:00:00  Status: failed
+SBY 19:32:39 [cxl_ucie_bridge_bmc] engine_0: finished (returncode=1)
+SBY 19:32:39 [cxl_ucie_bridge_bmc] engine_0: Status returned by engine: FAIL
+SBY 19:32:39 [cxl_ucie_bridge_bmc] summary: Elapsed clock time [H:MM:SS (secs)]: 0:00:02 (2)
+SBY 19:32:39 [cxl_ucie_bridge_bmc] summary: Elapsed process time [H:MM:SS (secs)]: 0:00:04 (4)
+SBY 19:32:39 [cxl_ucie_bridge_bmc] summary: engine_0 (smtbmc) returned FAIL
+SBY 19:32:39 [cxl_ucie_bridge_bmc] summary: counterexample trace: cxl_ucie_bridge_bmc/engine_0/trace.vcd
+SBY 19:32:39 [cxl_ucie_bridge_bmc] summary:   failed assertion cxl_ucie_bridge.u_reset_drain._witness_.assert_assert_____________src_reset_drain_v_47_45 at ../../../../src/reset_drain.v:47.7-47.39 step 2
+SBY 19:32:39 [cxl_ucie_bridge_bmc] DONE (FAIL, rc=2)
+</system-out>
+<system-err>
+</system-err>
+</testsuite>
+</testsuites>

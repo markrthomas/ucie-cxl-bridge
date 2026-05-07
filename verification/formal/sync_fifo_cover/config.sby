@@ -1,0 +1,12 @@
+[options]
+mode cover
+depth 72
+
+[engines]
+smtbmc
+
+[script]
+# Yosys cwd is <taskdir>/src (e.g. formal/sync_fifo_bmc/src); repo RTL is three levels up.
+read_verilog -sv -DFORMAL ../../../../src/sync_fifo.v
+prep -top sync_fifo
+async2sync

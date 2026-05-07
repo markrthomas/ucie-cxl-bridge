@@ -1,0 +1,6 @@
+Elapsed clock time [H:MM:SS (secs)]: 0:00:02 (2)
+Elapsed process time [H:MM:SS (secs)]: 0:00:04 (4)
+engine_0 (smtbmc) returned FAIL
+counterexample trace: engine_0/trace.vcd
+counterexample trace: engine_0/trace.yw
+  failed assertion cxl_ucie_bridge.u_reset_drain._witness_.assert_assert_____________src_reset_drain_v_47_45 at ../../../../src/reset_drain.v:47.7-47.39 step 2

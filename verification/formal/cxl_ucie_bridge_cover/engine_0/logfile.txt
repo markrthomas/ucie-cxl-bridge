@@ -1,0 +1,82 @@
+##   0:00:00  Solver: yices
+##   0:00:00  Checking cover reachability in step 0..
+##   0:00:00  Checking cover reachability in step 1..
+##   0:00:00  Checking cover reachability in step 2..
+##   0:00:00  Reached cover statement in step 2 at cxl_ucie_bridge: ../../../../src/cxl_ucie_bridge.v:464.7-464.96 (_witness_.cover_cover_____________src_cxl_ucie_bridge_v_464_309)
+##   0:00:00  Writing trace to VCD file: engine_0/trace0.vcd
+##   0:00:00  Writing trace to Verilog testbench: engine_0/trace0_tb.v
+##   0:00:00  Writing trace to constraints file: engine_0/trace0.smtc
+##   0:00:00  Writing trace to Yosys witness file: engine_0/trace0.yw
+##   0:00:00  Checking cover reachability in step 2..
+##   0:00:00  Reached cover statement in step 2 at cxl_ucie_bridge: ../../../../src/cxl_ucie_bridge.v:465.7-465.98 (_witness_.cover_cover_____________src_cxl_ucie_bridge_v_465_312)
+##   0:00:00  Writing trace to VCD file: engine_0/trace1.vcd
+##   0:00:00  Writing trace to Verilog testbench: engine_0/trace1_tb.v
+##   0:00:00  Writing trace to constraints file: engine_0/trace1.smtc
+##   0:00:00  Writing trace to Yosys witness file: engine_0/trace1.yw
+##   0:00:00  Checking cover reachability in step 2..
+##   0:00:00  Reached cover statement in step 2 at cxl_ucie_bridge: ../../../../src/cxl_ucie_bridge.v:466.7-466.47 (_witness_.cover_cover_____________src_cxl_ucie_bridge_v_466_315)
+##   0:00:00  Writing trace to VCD file: engine_0/trace2.vcd
+##   0:00:00  Writing trace to Verilog testbench: engine_0/trace2_tb.v
+##   0:00:00  Writing trace to constraints file: engine_0/trace2.smtc
+##   0:00:00  Writing trace to Yosys witness file: engine_0/trace2.yw
+##   0:00:00  Checking cover reachability in step 2..
+##   0:00:00  Reached cover statement in step 2 at cxl_ucie_bridge: ../../../../src/cxl_ucie_bridge.v:451.7-451.92 (_witness_.cover_cover_____________src_cxl_ucie_bridge_v_451_288)
+##   0:00:00  Writing trace to VCD file: engine_0/trace3.vcd
+##   0:00:00  Writing trace to Verilog testbench: engine_0/trace3_tb.v
+##   0:00:00  Writing trace to constraints file: engine_0/trace3.smtc
+##   0:00:00  Writing trace to Yosys witness file: engine_0/trace3.yw
+##   0:00:00  Checking cover reachability in step 2..
+##   0:00:00  Reached cover statement in step 2 at cxl_ucie_bridge: ../../../../src/cxl_ucie_bridge.v:453.7-453.94 (_witness_.cover_cover_____________src_cxl_ucie_bridge_v_453_294)
+##   0:00:00  Writing trace to VCD file: engine_0/trace4.vcd
+##   0:00:00  Writing trace to Verilog testbench: engine_0/trace4_tb.v
+##   0:00:00  Writing trace to constraints file: engine_0/trace4.smtc
+##   0:00:00  Writing trace to Yosys witness file: engine_0/trace4.yw
+##   0:00:00  Checking cover reachability in step 2..
+##   0:00:00  Reached cover statement in step 2 at cxl_ucie_bridge: ../../../../src/cxl_ucie_bridge.v:454.7-454.94 (_witness_.cover_cover_____________src_cxl_ucie_bridge_v_454_297)
+##   0:00:00  Writing trace to VCD file: engine_0/trace5.vcd
+##   0:00:01  Writing trace to Verilog testbench: engine_0/trace5_tb.v
+##   0:00:01  Writing trace to constraints file: engine_0/trace5.smtc
+##   0:00:01  Writing trace to Yosys witness file: engine_0/trace5.yw
+##   0:00:01  Checking cover reachability in step 2..
+##   0:00:01  Reached cover statement in step 2 at cxl_ucie_bridge: ../../../../src/cxl_ucie_bridge.v:452.7-452.92 (_witness_.cover_cover_____________src_cxl_ucie_bridge_v_452_291)
+##   0:00:01  Writing trace to VCD file: engine_0/trace6.vcd
+##   0:00:01  Writing trace to Verilog testbench: engine_0/trace6_tb.v
+##   0:00:01  Writing trace to constraints file: engine_0/trace6.smtc
+##   0:00:01  Writing trace to Yosys witness file: engine_0/trace6.yw
+##   0:00:01  Checking cover reachability in step 2..
+##   0:00:01  Reached cover statement in step 2 at cxl_ucie_bridge: ../../../../src/cxl_ucie_bridge.v:456.7-456.38 (_witness_.cover_cover_____________src_cxl_ucie_bridge_v_456_305)
+##   0:00:01  Writing trace to VCD file: engine_0/trace7.vcd
+##   0:00:01  Writing trace to Verilog testbench: engine_0/trace7_tb.v
+##   0:00:01  Writing trace to constraints file: engine_0/trace7.smtc
+##   0:00:01  Writing trace to Yosys witness file: engine_0/trace7.yw
+##   0:00:01  Checking cover reachability in step 2..
+##   0:00:01  Reached cover statement in step 2 at cxl_ucie_bridge: ../../../../src/cxl_ucie_bridge.v:457.7-457.25 (_witness_.cover_cover_____________src_cxl_ucie_bridge_v_457_307)
+##   0:00:01  Writing trace to VCD file: engine_0/trace8.vcd
+##   0:00:01  Writing trace to Verilog testbench: engine_0/trace8_tb.v
+##   0:00:01  Writing trace to constraints file: engine_0/trace8.smtc
+##   0:00:01  Writing trace to Yosys witness file: engine_0/trace8.yw
+##   0:00:01  Checking cover reachability in step 2..
+##   0:00:01  Reached cover statement in step 2 at cxl_ucie_bridge.u_reset_drain: ../../../../src/reset_drain.v:56.7-56.57 (_witness_.cover_cover_____________src_reset_drain_v_56_56)
+##   0:00:01  Writing trace to VCD file: engine_0/trace9.vcd
+##   0:00:01  Writing trace to Verilog testbench: engine_0/trace9_tb.v
+##   0:00:01  Writing trace to constraints file: engine_0/trace9.smtc
+##   0:00:01  Writing trace to Yosys witness file: engine_0/trace9.yw
+##   0:00:01  Checking cover reachability in step 2..
+##   0:00:01  Reached cover statement in step 2 at cxl_ucie_bridge.u_reset_drain: ../../../../src/reset_drain.v:54.7-54.31 (_witness_.cover_cover_____________src_reset_drain_v_54_54)
+##   0:00:01  Writing trace to VCD file: engine_0/trace10.vcd
+##   0:00:01  Writing trace to Verilog testbench: engine_0/trace10_tb.v
+##   0:00:01  Writing trace to constraints file: engine_0/trace10.smtc
+##   0:00:01  Writing trace to Yosys witness file: engine_0/trace10.yw
+##   0:00:01  Checking cover reachability in step 2..
+##   0:00:01  Reached cover statement in step 2 at cxl_ucie_bridge.u_reset_drain: ../../../../src/reset_drain.v:53.7-53.28 (_witness_.cover_cover_____________src_reset_drain_v_53_52)
+##   0:00:01  Writing trace to VCD file: engine_0/trace11.vcd
+##   0:00:01  Writing trace to Verilog testbench: engine_0/trace11_tb.v
+##   0:00:01  Writing trace to constraints file: engine_0/trace11.smtc
+##   0:00:01  Writing trace to Yosys witness file: engine_0/trace11.yw
+##   0:00:01  Checking cover reachability in step 2..
+##   0:00:01  Reached cover statement in step 2 at cxl_ucie_bridge: ../../../../src/cxl_ucie_bridge.v:455.7-455.60 (_witness_.cover_cover_____________src_cxl_ucie_bridge_v_455_300)
+##   0:00:01  Writing trace to VCD file: engine_0/trace12.vcd
+##   0:00:01  Writing trace to Verilog testbench: engine_0/trace12_tb.v
+##   0:00:01  Writing trace to constraints file: engine_0/trace12.smtc
+##   0:00:01  Writing trace to Yosys witness file: engine_0/trace12.yw
+##   0:00:01  Status: passed

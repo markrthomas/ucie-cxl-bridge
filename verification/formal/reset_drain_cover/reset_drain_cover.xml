@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites>
+<testsuite timestamp="2026-05-06T19:31:33" hostname="MarkThomas" package="reset_drain" id="0" name="cover" tests="6" errors="0" failures="0" time="0" skipped="3">
+<properties>
+<property name="os" value="Linux"/>
+<property name="expect" value="PASS"/>
+<property name="status" value="PASS"/>
+</properties>
+<testcase classname="cover" name="build execution" time="0">
+</testcase>
+<testcase classname="cover" name="Property COVER in reset_drain at ../../../../src/reset_drain.v:53.7-53.28" time="0" type="COVER" location="../../../../src/reset_drain.v:53.7-53.28" id="_witness_.cover_cover_____________src_reset_drain_v_53_14" tracefile="engine_0/trace0.vcd">
+</testcase>
+<testcase classname="cover" name="Property COVER in reset_drain at ../../../../src/reset_drain.v:54.7-54.31" time="0" type="COVER" location="../../../../src/reset_drain.v:54.7-54.31" id="_witness_.cover_cover_____________src_reset_drain_v_54_16" tracefile="engine_0/trace1.vcd">
+</testcase>
+<testcase classname="cover" name="Property COVER in reset_drain at ../../../../src/reset_drain.v:56.7-56.57" time="0" type="COVER" location="../../../../src/reset_drain.v:56.7-56.57" id="_witness_.cover_cover_____________src_reset_drain_v_56_18" tracefile="engine_0/trace2.vcd">
+</testcase>
+<testcase classname="cover" name="Property ASSERT in reset_drain at ../../../../src/reset_drain.v:47.7-47.39" time="0" type="ASSERT" location="../../../../src/reset_drain.v:47.7-47.39" id="_witness_.assert_assert_____________src_reset_drain_v_47_7">
+<skipped />
+</testcase>
+<testcase classname="cover" name="Property ASSERT in reset_drain at ../../../../src/reset_drain.v:49.7-49.29" time="0" type="ASSERT" location="../../../../src/reset_drain.v:49.7-49.29" id="_witness_.assert_assert_____________src_reset_drain_v_49_10">
+<skipped />
+</testcase>
+<testcase classname="cover" name="Property ASSERT in reset_drain at ../../../../src/reset_drain.v:51.7-51.39" time="0" type="ASSERT" location="../../../../src/reset_drain.v:51.7-51.39" id="_witness_.assert_assert_____________src_reset_drain_v_51_12">
+<skipped />
+</testcase>
+<system-out>SBY 19:31:33 [reset_drain_bmc] Removing directory '/home/markt/proj/ucie-cxl-bridge/verification/formal/reset_drain_bmc'.
+SBY 19:31:33 [reset_drain_cover] Removing directory '/home/markt/proj/ucie-cxl-bridge/verification/formal/reset_drain_cover'.
+SBY 19:31:33 [reset_drain_cover] engine_0: smtbmc
+SBY 19:31:33 [reset_drain_cover] base: starting process &quot;cd reset_drain_cover/src; yosys -ql ../model/design.log ../model/design.ys&quot;
+SBY 19:31:33 [reset_drain_cover] base: finished (returncode=0)
+SBY 19:31:33 [reset_drain_cover] prep: starting process &quot;cd reset_drain_cover/model; yosys -ql design_prep.log design_prep.ys&quot;
+SBY 19:31:33 [reset_drain_cover] prep: finished (returncode=0)
+SBY 19:31:33 [reset_drain_cover] smt2: starting process &quot;cd reset_drain_cover/model; yosys -ql design_smt2.log design_smt2.ys&quot;
+SBY 19:31:33 [reset_drain_cover] smt2: finished (returncode=0)
+SBY 19:31:33 [reset_drain_cover] engine_0: starting process &quot;cd reset_drain_cover; yosys-smtbmc --presat --unroll -c --noprogress -t 32  --append 0 --dump-vcd engine_0/trace%.vcd --dump-yw engine_0/trace%.yw --dump-vlogtb engine_0/trace%_tb.v --dump-smtc engine_0/trace%.smtc model/design_smt2.smt2&quot;
+SBY 19:31:33 [reset_drain_cover] engine_0: ##   0:00:00  Solver: yices
+SBY 19:31:33 [reset_drain_cover] engine_0: ##   0:00:00  Checking cover reachability in step 0..
+SBY 19:31:33 [reset_drain_cover] engine_0: ##   0:00:00  Checking cover reachability in step 1..
+SBY 19:31:33 [reset_drain_cover] engine_0: ##   0:00:00  Checking cover reachability in step 2..
+SBY 19:31:33 [reset_drain_cover] engine_0: ##   0:00:00  Checking cover reachability in step 3..
+SBY 19:31:33 [reset_drain_cover] engine_0: ##   0:00:00  Reached cover statement in step 3 at reset_drain: ../../../../src/reset_drain.v:53.7-53.28 (_witness_.cover_cover_____________src_reset_drain_v_53_14)
+SBY 19:31:33 [reset_drain_cover] engine_0: ##   0:00:00  Writing trace to VCD file: engine_0/trace0.vcd
+SBY 19:31:33 [reset_drain_cover] engine_0: ##   0:00:00  Writing trace to Verilog testbench: engine_0/trace0_tb.v
+SBY 19:31:33 [reset_drain_cover] engine_0: ##   0:00:00  Writing trace to constraints file: engine_0/trace0.smtc
+SBY 19:31:33 [reset_drain_cover] engine_0: ##   0:00:00  Writing trace to Yosys witness file: engine_0/trace0.yw
+SBY 19:31:33 [reset_drain_cover] engine_0: ##   0:00:00  Checking cover reachability in step 3..
+SBY 19:31:33 [reset_drain_cover] engine_0: ##   0:00:00  Checking cover reachability in step 4..
+SBY 19:31:33 [reset_drain_cover] engine_0: ##   0:00:00  Reached cover statement in step 4 at reset_drain: ../../../../src/reset_drain.v:54.7-54.31 (_witness_.cover_cover_____________src_reset_drain_v_54_16)
+SBY 19:31:33 [reset_drain_cover] engine_0: ##   0:00:00  Writing trace to VCD file: engine_0/trace1.vcd
+SBY 19:31:33 [reset_drain_cover] engine_0: ##   0:00:00  Writing trace to Verilog testbench: engine_0/trace1_tb.v
+SBY 19:31:33 [reset_drain_cover] engine_0: ##   0:00:00  Writing trace to constraints file: engine_0/trace1.smtc
+SBY 19:31:33 [reset_drain_cover] engine_0: ##   0:00:00  Writing trace to Yosys witness file: engine_0/trace1.yw
+SBY 19:31:33 [reset_drain_cover] engine_0: ##   0:00:00  Checking cover reachability in step 4..
+SBY 19:31:33 [reset_drain_cover] engine_0: ##   0:00:00  Checking cover reachability in step 5..
+SBY 19:31:33 [reset_drain_cover] engine_0: ##   0:00:00  Reached cover statement in step 5 at reset_drain: ../../../../src/reset_drain.v:56.7-56.57 (_witness_.cover_cover_____________src_reset_drain_v_56_18)
+SBY 19:31:33 [reset_drain_cover] engine_0: ##   0:00:00  Writing trace to VCD file: engine_0/trace2.vcd
+SBY 19:31:33 [reset_drain_cover] engine_0: ##   0:00:00  Writing trace to Verilog testbench: engine_0/trace2_tb.v
+SBY 19:31:33 [reset_drain_cover] engine_0: ##   0:00:00  Writing trace to constraints file: engine_0/trace2.smtc
+SBY 19:31:33 [reset_drain_cover] engine_0: ##   0:00:00  Writing trace to Yosys witness file: engine_0/trace2.yw
+SBY 19:31:33 [reset_drain_cover] engine_0: ##   0:00:00  Status: passed
+SBY 19:31:33 [reset_drain_cover] engine_0: finished (returncode=0)
+SBY 19:31:33 [reset_drain_cover] engine_0: Status returned by engine: pass
+SBY 19:31:33 [reset_drain_cover] summary: Elapsed clock time [H:MM:SS (secs)]: 0:00:00 (0)
+SBY 19:31:33 [reset_drain_cover] summary: Elapsed process time [H:MM:SS (secs)]: 0:00:00 (0)
+SBY 19:31:33 [reset_drain_cover] summary: engine_0 (smtbmc) returned pass
+SBY 19:31:33 [reset_drain_cover] summary: cover trace: reset_drain_cover/engine_0/trace0.vcd
+SBY 19:31:33 [reset_drain_cover] summary:   reached cover statement reset_drain._witness_.cover_cover_____________src_reset_drain_v_53_14 at ../../../../src/reset_drain.v:53.7-53.28 step 3
+SBY 19:31:33 [reset_drain_cover] summary: cover trace: reset_drain_cover/engine_0/trace1.vcd
+SBY 19:31:33 [reset_drain_cover] summary:   reached cover statement reset_drain._witness_.cover_cover_____________src_reset_drain_v_54_16 at ../../../../src/reset_drain.v:54.7-54.31 step 4
+SBY 19:31:33 [reset_drain_cover] summary: cover trace: reset_drain_cover/engine_0/trace2.vcd
+SBY 19:31:33 [reset_drain_cover] summary:   reached cover statement reset_drain._witness_.cover_cover_____________src_reset_drain_v_56_18 at ../../../../src/reset_drain.v:56.7-56.57 step 5
+SBY 19:31:33 [reset_drain_cover] DONE (PASS, rc=0)
+</system-out>
+<system-err>
+</system-err>
+</testsuite>
+</testsuites>

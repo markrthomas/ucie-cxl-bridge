@@ -234,25 +234,36 @@ endfunction
 // Caller must zero the misc byte [7:0] before calling; that byte is not read here.
 /* verilator lint_off UNUSEDSIGNAL */
 function automatic [7:0] bridge_checksum;
-  input [63:0] packet_wo_checksum;
-  reg [7:0] crc;
+  input [63:0] p; // packet_wo_checksum
+  reg [7:0] c;     // crc
   begin
-    crc = 8'h00;
-    crc = crc ^ packet_wo_checksum[63:56];
-    repeat (8) crc = crc[7] ? ((crc << 1) ^ 8'h07) : (crc << 1);
-    crc = crc ^ packet_wo_checksum[55:48];
-    repeat (8) crc = crc[7] ? ((crc << 1) ^ 8'h07) : (crc << 1);
-    crc = crc ^ packet_wo_checksum[47:40];
-    repeat (8) crc = crc[7] ? ((crc << 1) ^ 8'h07) : (crc << 1);
-    crc = crc ^ packet_wo_checksum[39:32];
-    repeat (8) crc = crc[7] ? ((crc << 1) ^ 8'h07) : (crc << 1);
-    crc = crc ^ packet_wo_checksum[31:24];
-    repeat (8) crc = crc[7] ? ((crc << 1) ^ 8'h07) : (crc << 1);
-    crc = crc ^ packet_wo_checksum[23:16];
-    repeat (8) crc = crc[7] ? ((crc << 1) ^ 8'h07) : (crc << 1);
-    crc = crc ^ packet_wo_checksum[15:8];
-    repeat (8) crc = crc[7] ? ((crc << 1) ^ 8'h07) : (crc << 1);
-    bridge_checksum = crc;
+    c = 8'h00;
+    // Combinational CRC-8/CCITT over 7 bytes [63:8]
+    c = crc8_step(c ^ p[63:56]);
+    c = crc8_step(c ^ p[55:48]);
+    c = crc8_step(c ^ p[47:40]);
+    c = crc8_step(c ^ p[39:32]);
+    c = crc8_step(c ^ p[31:24]);
+    c = crc8_step(c ^ p[23:16]);
+    c = crc8_step(c ^ p[15:8]);
+    bridge_checksum = c;
+  end
+endfunction
+
+// Use a simple combinational function that Yosys can more easily inline/elaborate
+function automatic [7:0] crc8_step;
+  input [7:0] b;
+  reg [7:0] c0, c1, c2, c3, c4, c5, c6, c7;
+  begin
+    c0 = b[7] ? ((b << 1) ^ 8'h07) : (b << 1);
+    c1 = c0[7] ? ((c0 << 1) ^ 8'h07) : (c0 << 1);
+    c2 = c1[7] ? ((c1 << 1) ^ 8'h07) : (c1 << 1);
+    c3 = c2[7] ? ((c2 << 1) ^ 8'h07) : (c2 << 1);
+    c4 = c3[7] ? ((c3 << 1) ^ 8'h07) : (c3 << 1);
+    c5 = c4[7] ? ((c4 << 1) ^ 8'h07) : (c4 << 1);
+    c6 = c5[7] ? ((c5 << 1) ^ 8'h07) : (c5 << 1);
+    c7 = c6[7] ? ((c6 << 1) ^ 8'h07) : (c6 << 1);
+    crc8_step = c7;
   end
 endfunction
 /* verilator lint_on UNUSEDSIGNAL */

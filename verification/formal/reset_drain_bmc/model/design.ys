@@ -1,0 +1,9 @@
+# running in reset_drain_bmc/src/
+# Yosys cwd is <taskdir>/src (e.g. formal/reset_drain_bmc/src); repo RTL is three levels up.
+read_verilog -sv -DFORMAL ../../../../src/reset_drain.v
+prep -top reset_drain
+async2sync
+hierarchy -smtcheck
+rename -witness
+write_jny -no-connections ../model/design.json
+write_rtlil ../model/design.il
