@@ -1,40 +1,26 @@
-# sim
-sim/
-test/build/
+# Simulation and Documentation build artifacts
+verification/directed/build/
+verification/uvm/build/
 doc/build/
 
-# SymbiYosys (workdirs next to each .sby; names vary by sby version / flags)
-formal/sync_fifo/
-# CI rewrites read_verilog path into *_ci.sby (see .github/workflows/ci.yml)
-formal/sync_fifo_ci.sby
-formal/sync_fifo_ci/
-formal/cxl_ucie_bridge_ci.sby
-formal/cxl_ucie_bridge_ci/
-formal/cxl_ucie_bridge/
-formal/reset_drain_ci.sby
-formal/reset_drain_ci/
-formal/reset_drain/
-formal/sync_fifo_ci_bmc/
-formal/sync_fifo_ci_cover/
-formal/*_bmc/
-formal/*_cover/
-formal/*_prove/
-formal/*_live/
+# SymbiYosys (Formal verification workdirs)
+# These are generated in the same directory as the .sby files.
+verification/formal/*/
+verification/formal/*_ci.sby
+
+# Common simulation/tool junk
 work/
 *.log
 *.wlf
 *.vcd
 *.fsdb
 *.vpd
-
-# tool junk
 *.jou
 *.pb
 *.str
 
-# editor
+# Editor and Tooling
 .vscode/
 *.swp
-
-# local agent metadata
 .codex
+NOTES
