@@ -19,7 +19,7 @@ jobs:
           sudo apt-get install -y iverilog
 
       - name: Simulation (default + heavy stress)
-        working-directory: test
+        working-directory: verification/directed
         run: make clean && make && make stress
 
   verilator:
@@ -50,7 +50,7 @@ jobs:
           version: ${{ env.OSS_CAD_SUITE_VERSION }}
 
       - name: SymbiYosys formal (bmc + cover, sync_fifo)
-        working-directory: formal
+        working-directory: verification/formal
         run: |
           set -euo pipefail
           test -r "${GITHUB_WORKSPACE}/src/sync_fifo.v"
@@ -60,10 +60,10 @@ jobs:
           root = Path(os.environ["GITHUB_WORKSPACE"])
           rtl = root / "src" / "sync_fifo.v"
           assert rtl.is_file(), rtl
-          src = root / "formal" / "sync_fifo.sby"
-          out = root / "formal" / "sync_fifo_ci.sby"
-          old = "read_verilog -sv -DFORMAL ../../../src/sync_fifo.v"
-          new = f"read_verilog -sv -DFORMAL {rtl}"
+          src = root / "verification" / "formal" / "sync_fifo.sby"
+          out = root / "verification" / "formal" / "sync_fifo_ci.sby"
+          old = "../../../../src/sync_fifo.v"
+          new = f"{rtl}"
           text = src.read_text()
           if old not in text:
               raise SystemExit(f"expected snippet not in {src}: {old!r}")
@@ -74,7 +74,7 @@ jobs:
           sby -f sync_fifo_ci.sby
 
       - name: SymbiYosys formal (bmc + cover, cxl_ucie_bridge)
-        working-directory: formal
+        working-directory: verification/formal
         run: |
           set -euo pipefail
           test -r "${GITHUB_WORKSPACE}/src/cxl_ucie_bridge.v"
@@ -83,10 +83,10 @@ jobs:
           from pathlib import Path
           root = Path(os.environ["GITHUB_WORKSPACE"])
           assert (root / "src" / "cxl_ucie_bridge.v").is_file()
-          src = root / "formal" / "cxl_ucie_bridge.sby"
-          out = root / "formal" / "cxl_ucie_bridge_ci.sby"
+          src = root / "verification" / "formal" / "cxl_ucie_bridge.sby"
+          out = root / "verification" / "formal" / "cxl_ucie_bridge_ci.sby"
           text = src.read_text()
-          new = text.replace("../../../src", str(root / "src"))
+          new = text.replace("../../../../src", str(root / "src"))
           assert new != text, "no path substitution made in cxl_ucie_bridge.sby"
           out.write_text(new)
           print("wrote", out)
@@ -94,7 +94,7 @@ jobs:
           sby -f cxl_ucie_bridge_ci.sby
 
       - name: SymbiYosys formal (bmc + cover, reset_drain)
-        working-directory: formal
+        working-directory: verification/formal
         run: |
           set -euo pipefail
           test -r "${GITHUB_WORKSPACE}/src/reset_drain.v"
@@ -103,10 +103,10 @@ jobs:
           from pathlib import Path
           root = Path(os.environ["GITHUB_WORKSPACE"])
           assert (root / "src" / "reset_drain.v").is_file()
-          src = root / "formal" / "reset_drain.sby"
-          out = root / "formal" / "reset_drain_ci.sby"
+          src = root / "verification" / "formal" / "reset_drain.sby"
+          out = root / "verification" / "formal" / "reset_drain_ci.sby"
           text = src.read_text()
-          new = text.replace("../../../src", str(root / "src"))
+          new = text.replace("../../../../src", str(root / "src"))
           assert new != text, "no path substitution made in reset_drain.sby"
           out.write_text(new)
           print("wrote", out)
