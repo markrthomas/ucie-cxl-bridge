@@ -23,4 +23,3 @@ cover: read_verilog -sv -DFORMAL -I../../../../src ../../../../src/cdc_sync.v
 cover: read_verilog -sv -DFORMAL -I../../../../src ../../../../src/reset_drain.v
 cover: read_verilog -sv -DFORMAL -I../../../../src ../../../../src/cxl_ucie_bridge.v
 prep -top cxl_ucie_bridge
-async2sync

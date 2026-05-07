@@ -44,7 +44,8 @@ module reset_drain (
   always_ff @(posedge clk) begin
     if (rst_n) begin
       // open is asserted iff the FSM is in S_UP
-      assert ((state == S_UP) == open);
+      if (state == S_UP) assert (open == 1'b1);
+      else               assert (open == 1'b0);
       // legal 2-bit encoding (S_DOWN=0, S_UP=1, S_DRAIN=2; 3 is unused)
       assert (state != 2'd3);
       // drain_done tracks all_empty
