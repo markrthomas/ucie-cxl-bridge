@@ -1,6 +1,10 @@
 # Simulation and Documentation build artifacts
 verification/directed/build/
 verification/uvm/build/
+verification/cocotb/sim_build/
+verification/cocotb/__pycache__/
+verification/cocotb/**/*.pyc
+verification/cocotb/results.xml
 doc/build/
 
 # SymbiYosys (Formal verification workdirs)

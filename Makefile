@@ -4,7 +4,7 @@
 
 SBY ?= sby
 
-.PHONY: help lint sim regress stress coverage formal ci clean
+.PHONY: help lint sim regress stress coverage formal ci cocotb clean
 
 help:
 	@echo "ucie-cxl-bridge — common targets"
@@ -53,6 +53,9 @@ formal:
 # Comprehensive local run.
 ci: regress formal
 	@echo "[CI] regress + formal PASSED"
+
+cocotb:
+	$(MAKE) -C verification/cocotb
 
 clean:
 	$(MAKE) -C verification/directed clean
