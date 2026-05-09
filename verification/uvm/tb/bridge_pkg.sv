@@ -15,10 +15,13 @@ package bridge_pkg;
   } cxl_pkt_kind_e;
 
   `include "bridge_item.sv"
-  `include "cxl_agent.sv"
-  `include "ucie_agent.sv"
-  `include "bridge_scoreboard.sv"
-  `include "bridge_env.sv"
-  `include "bridge_base_test.sv"
+  `include "../seq/bridge_sequences.sv"
+  `include "../agents/cxl_agent/cxl_monitor.sv"
+  `include "../agents/cxl_agent/cxl_agent.sv"
+  `include "../agents/ucie_agent/ucie_monitor.sv"
+  `include "../agents/ucie_agent/ucie_agent.sv"
+  `include "../env/bridge_scoreboard.sv"
+  `include "../env/bridge_env.sv"
+  `include "../tests/bridge_base_test.sv"
 
 endpackage

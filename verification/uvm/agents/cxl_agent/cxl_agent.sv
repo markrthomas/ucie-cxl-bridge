@@ -36,6 +36,7 @@ endclass
 
 class cxl_agent extends uvm_agent;
   cxl_driver driver;
+  cxl_monitor monitor;
   uvm_sequencer#(bridge_item) sequencer;
   `uvm_component_utils(cxl_agent)
 
@@ -45,6 +46,7 @@ class cxl_agent extends uvm_agent;
 
   function void build_phase(uvm_phase phase);
     driver = cxl_driver::type_id::create("driver", this);
+    monitor = cxl_monitor::type_id::create("monitor", this);
     sequencer = uvm_sequencer#(bridge_item)::type_id::create("sequencer", this);
   endfunction
 

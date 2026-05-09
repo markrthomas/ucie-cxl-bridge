@@ -13,4 +13,9 @@ class bridge_env extends uvm_env;
     u_agent = ucie_agent::type_id::create("u_agent", this);
     sb = bridge_scoreboard::type_id::create("sb", this);
   endfunction
+
+  function void connect_phase(uvm_phase phase);
+    c_agent.monitor.item_collected_port.connect(sb.cxl_export);
+    u_agent.monitor.item_collected_port.connect(sb.ucie_export);
+  endfunction
 endclass

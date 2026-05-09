@@ -21,7 +21,7 @@ module top;
     #100 rst_n = 1;
   end
 
-  bridge_if b_if(clk, rst_n);
+  bridge_if b_if(clk, ucie_clk, rst_n);
 
   cxl_ucie_bridge dut (
     .clk(clk),

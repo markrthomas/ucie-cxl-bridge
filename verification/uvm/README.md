@@ -38,8 +38,8 @@ graph TD
 | `tb/top.sv` | SystemVerilog top; clock/reset generation; interface instantiation. |
 | `tb/bridge_if.sv` | Virtual interface with clocking blocks for CXL and UCIe domains. |
 | `tb/bridge_pkg.sv` | Global package importing UVM and local components. |
-| `agents/cxl_agent/` | CXL-side driver, sequencer, and agent logic. |
-| `agents/ucie_agent/` | UCIe-side driver, sequencer, and agent logic. |
+| `agents/cxl_agent/` | CXL-side driver, monitor, sequencer, and agent logic. |
+| `agents/ucie_agent/` | UCIe-side driver, monitor, sequencer, and agent logic. |
 | `env/` | Orchestration layer (environment and scoreboard). |
 | `seq/` | Reusable sequence library for protocol-specific stimulus. |
 | `tests/` | Test library defining specific test scenarios and configurations. |
@@ -48,21 +48,23 @@ graph TD
 
 ### 1. Agents and Drivers
 The testbench uses two independent agents to drive the CXL and UCIe interfaces.
-- **CXL Driver**: Handles the `cxl_in_*` and `cxl_out_*` signals. It interprets `bridge_item` transactions and converts them to valid/ready handshakes.
-- **UCIe Driver**: Manages the `ucie_in_*` and `ucie_out_*` signals, simulating the behavior of a UCIe adapter layer.
+- **CXL Driver/Monitor**: Handles the `cxl_in_*` and `cxl_out_*` signals. The driver converts `bridge_item` transactions to valid/ready handshakes, while the monitor observes and reports all traffic in the CXL domain.
+- **UCIe Driver/Monitor**: Manages the `ucie_in_*` and `ucie_out_*` signals. The monitor observes traffic in the UCIe domain, facilitating cross-domain checking in the scoreboard.
 
 ### 2. Scoreboard and Checking
-The `bridge_scoreboard` is responsible for end-to-end data integrity. It maintains an internal model of the bridge's translation logic:
-- **CXL -> UCIe**: Maps CXL request kinds to `UCIE_PKT_KIND_AD_REQ` and calculates the expected CRC-8/CCITT checksum.
-- **UCIe -> CXL**: Verifies incoming UCIe checksums and maps completions back to CXL kinds.
+The `bridge_scoreboard` is responsible for end-to-end data integrity across the dual-clock boundary. It tracks in-flight transactions and verifies:
+- **CXL -> UCIe**: Correct mapping of CXL request kinds to UCIe messages and accurate checksum calculation.
+- **UCIe -> CXL**: Accurate checksum verification and mapping of completions back to CXL kinds.
 
 ### 3. Transaction Model (`bridge_item`)
-The `bridge_item` represents a single 64-bit packet beat.
+The `bridge_item` represents a single 64-bit packet beat with protocol metadata.
 
 | Field | Bits | Description |
 |:---|:---|:---|
 | `data` | [63:0] | Raw 64-bit flit payload. |
+| `kind` | [3:0]  | CXL packet kind (enum). |
 | `delay` | N/A | Inter-transaction delay (constrained-random). |
+
 
 ## Requirements
 

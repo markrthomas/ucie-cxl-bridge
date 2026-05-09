@@ -1,4 +1,4 @@
-interface bridge_if (input logic clk, input logic rst_n);
+interface bridge_if (input logic clk, input logic ucie_clk, input logic rst_n);
   parameter integer WIDTH = 64;
 
   // CXL -> UCIe path
@@ -32,12 +32,26 @@ interface bridge_if (input logic clk, input logic rst_n);
     input  drain_done;
   endclocking
 
-  clocking ucie_cb @(posedge clk); // Assuming synchronous for simple UVM TB, or use ucie_clk
+  clocking ucie_cb @(posedge ucie_clk);
     default input #1ns output #1ns;
     output ucie_in_valid, ucie_in_data;
     input  ucie_in_ready;
     input  ucie_out_valid, ucie_out_data;
     output ucie_out_ready;
+  endclocking
+
+  // Monitor clocking blocks
+  clocking cxl_mon_cb @(posedge clk);
+    default input #1ns output #1ns;
+    input cxl_in_valid, cxl_in_data, cxl_in_ready;
+    input cxl_out_valid, cxl_out_data, cxl_out_ready;
+    input link_up, err_inj_en, drain_done;
+  endclocking
+
+  clocking ucie_mon_cb @(posedge ucie_clk);
+    default input #1ns output #1ns;
+    input ucie_in_valid, ucie_in_data, ucie_in_ready;
+    input ucie_out_valid, ucie_out_data, ucie_out_ready;
   endclocking
 
 endinterface
