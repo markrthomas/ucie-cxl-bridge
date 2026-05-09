@@ -1,45 +1,33 @@
-# Simulation (Icarus), lint (Verilator), formal (SymbiYosys via OSS CAD Suite).
+# CI: lint (Verilator) + simulation (Icarus) + formal (SymbiYosys via OSS CAD Suite).
+# Standard job layout: regress (fast gate) → formal (comprehensive).
 name: CI
 
-on: [push, pull_request]
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
 
 env:
   # Pin OSS CAD Suite for reproducible formal CI; bump when upgrading tools.
   OSS_CAD_SUITE_VERSION: "2026-04-13"
 
 jobs:
-  sim:
+  regress:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
 
-      - name: Install Icarus Verilog
+      - name: Install tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y iverilog
+          sudo apt-get install -y iverilog verilator
 
-      - name: Simulation (default + heavy stress)
-        working-directory: verification/directed
-        run: make clean && make && make stress
-
-  verilator:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-
-      - name: Install Verilator
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y verilator
-
-      - name: Lint RTL (no testbench)
-        run: |
-          verilator -Isrc --lint-only -Wall -top-module cxl_ucie_bridge \
-            src/async_fifo.v src/credit_counter.v src/reset_drain.v src/cdc_sync.v src/cxl_ucie_bridge.v
-          verilator -Isrc --lint-only -Wall -top-module async_fifo src/async_fifo.v
-          verilator -Isrc --lint-only -Wall -top-module cdc_sync src/cdc_sync.v
+      - name: Lint (Verilator) + directed simulation + stress (make regress + stress)
+        run: make regress && make stress
 
   formal:
+    needs: regress
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
