@@ -1,81 +1,95 @@
-# UVM Testbench for CXL-UCIe Bridge
+# UVM Verification Environment
 
-This directory contains a UVM-based verification environment for the CXL-UCIe bridge, designed for use with Synopsys VCS. It provides a scalable, constrained-random alternative to the primary directed testbench.
+This directory contains a **Universal Verification Methodology (UVM 1.2)** environment for the CXL-UCIe bridge. It provides a scalable, constrained-random alternative to the primary directed testbench, specifically designed for high-coverage closure.
 
-## Architecture Overview
+## Architecture
 
-The environment follows a standard UVM architecture, isolating the Design Under Test (DUT) from stimulus generation and checking logic.
+The environment is built to handle the asynchronous, multi-domain nature of the bridge.
 
 ```mermaid
 graph TD
-    subgraph "UVM Testbench (verification/uvm)"
+    subgraph "UVM Testbench"
         Test["bridge_base_test"] --> Env["bridge_env"]
         subgraph "bridge_env"
             Env --> CXL_Agent["cxl_agent"]
             Env --> UCIE_Agent["ucie_agent"]
             Env --> SB["bridge_scoreboard"]
             
-            subgraph "cxl_agent"
+            subgraph "cxl_agent (clk domain)"
                 CXL_SQ["sequencer"] --> CXL_DRV["driver"]
-                CXL_DRV --> CXL_IF["bridge_if (CXL side)"]
+                CXL_MON["monitor"]
             end
             
-            subgraph "ucie_agent"
+            subgraph "ucie_agent (ucie_clk domain)"
                 UCIE_SQ["sequencer"] --> UCIE_DRV["driver"]
-                UCIE_DRV --> UCIE_IF["bridge_if (UCIe side)"]
+                UCIE_MON["monitor"]
             end
         end
     end
     
-    CXL_IF --> DUT["cxl_ucie_bridge (RTL)"]
-    UCIE_IF --> DUT
+    CXL_DRV & CXL_MON <--> VIF["bridge_if"]
+    UCIE_DRV & UCIE_MON <--> VIF
+    VIF <--> DUT["cxl_ucie_bridge (RTL)"]
+
+    CXL_MON -- write_cxl --> SB
+    UCIE_MON -- write_ucie --> SB
 ```
 
-## Directory Structure
+## Key Components
 
-| Path | Responsibility |
-|:---|:---|
-| `tb/top.sv` | SystemVerilog top; clock/reset generation; interface instantiation. |
-| `tb/bridge_if.sv` | Virtual interface with clocking blocks for CXL and UCIe domains. |
-| `tb/bridge_pkg.sv` | Global package importing UVM and local components. |
-| `agents/cxl_agent/` | CXL-side driver, monitor, sequencer, and agent logic. |
-| `agents/ucie_agent/` | UCIe-side driver, monitor, sequencer, and agent logic. |
-| `env/` | Orchestration layer (environment and scoreboard). |
-| `seq/` | Reusable sequence library for protocol-specific stimulus. |
-| `tests/` | Test library defining specific test scenarios and configurations. |
+### 1. Scoreboard (`bridge_scoreboard`)
+The scoreboard performs end-to-end data integrity checks across the clock boundary.
+- **Predictor**: Models the combinational translation and CRC calculation logic.
+- **Checker**: Matches egress transactions against predicted items stored in class-specific queues (`c2u_exp_q`, `u2c_exp_q`).
+- **Flow Control**: Monitors credit exhaustion and ensures the DUT never overruns internal or peer buffers.
 
-## Verification Components
+### 2. Monitor-Driven Agents
+Each agent is fully autonomous within its clock domain:
+- **CXL Agent**: Operates on `clk`. Observes ingress flits and validates they are correctly routed based on ordering class.
+- **UCIe Agent**: Operates on `ucie_clk`. Monitors adapter flits and verifies checksums.
 
-### 1. Agents and Drivers
-The testbench uses two independent agents to drive the CXL and UCIe interfaces.
-- **CXL Driver/Monitor**: Handles the `cxl_in_*` and `cxl_out_*` signals. The driver converts `bridge_item` transactions to valid/ready handshakes, while the monitor observes and reports all traffic in the CXL domain.
-- **UCIe Driver/Monitor**: Manages the `ucie_in_*` and `ucie_out_*` signals. The monitor observes traffic in the UCIe domain, facilitating cross-domain checking in the scoreboard.
+### 3. Virtual Interface (`bridge_if`)
+The interface features independent **Clocking Blocks** for each domain, ensuring race-free signal driving and sampling.
 
-### 2. Scoreboard and Checking
-The `bridge_scoreboard` is responsible for end-to-end data integrity across the dual-clock boundary. It tracks in-flight transactions and verifies:
-- **CXL -> UCIe**: Correct mapping of CXL request kinds to UCIe messages and accurate checksum calculation.
-- **UCIe -> CXL**: Accurate checksum verification and mapping of completions back to CXL kinds.
+```systemverilog
+  clocking cxl_cb @(posedge clk);
+    output cxl_in_valid, cxl_in_data;
+    input  cxl_in_ready;
+    input  cxl_out_valid, cxl_out_data;
+    output cxl_out_ready;
+  endclocking
 
-### 3. Transaction Model (`bridge_item`)
-The `bridge_item` represents a single 64-bit packet beat with protocol metadata.
+  clocking ucie_cb @(posedge ucie_clk);
+    output ucie_in_valid, ucie_in_data;
+    input  ucie_in_ready;
+    input  ucie_out_valid, ucie_out_data;
+    output ucie_out_ready;
+  endclocking
+```
 
-| Field | Bits | Description |
+## Transaction Model (`bridge_item`)
+
+The `bridge_item` represents a single 64-bit beat with metadata for constrained-random stimulus.
+
+| Property | Type | Description |
 |:---|:---|:---|
-| `data` | [63:0] | Raw 64-bit flit payload. |
-| `kind` | [3:0]  | CXL packet kind (enum). |
-| `delay` | N/A | Inter-transaction delay (constrained-random). |
+| `data` | `bit [63:0]` | Raw flit payload. |
+| `kind` | `enum` | CXL packet kind (IO, MEM, CACHE, etc.). |
+| `delay` | `int` | Random inter-transaction stall cycles. |
 
+## Sequence Library
 
-## Requirements
+- **`bridge_base_seq`**: Basic 10-item randomized sequence.
+- **`bridge_stress_seq`**: Concurrent bidirectional traffic with maximum backpressure (planned).
+- **`bridge_credit_seq`**: Targeted stimulus to hit credit-exhaustion edge cases (planned).
 
-- **Simulator**: Synopsys VCS
-- **Methodology**: UVM 1.2
-- **Documentation Build**: `pandoc` + `pdflatex` (for PDF generation)
+## Getting Started
 
-## Running with VCS
+### Requirements
+- **Simulator**: Synopsys VCS (recommended) or any UVM-compliant tool.
+- **UVM Version**: 1.2.
 
-To compile and run the testbench:
-
+### Execution (VCS Example)
 ```bash
 vcs -sverilog -ntb_opts uvm-1.2 \
     +incdir+../../../src \
@@ -91,12 +105,4 @@ vcs -sverilog -ntb_opts uvm-1.2 \
     -o simv
 
 ./simv +UVM_TESTNAME=bridge_base_test
-```
-
-## Documentation
-
-To generate a PDF version of this documentation:
-
-```bash
-make pdf
 ```

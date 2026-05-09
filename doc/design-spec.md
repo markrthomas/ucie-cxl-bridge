@@ -1,16 +1,16 @@
 ---
 title: "CXL–UCIe Bridge Design Specification"
 subtitle: "Experimental RTL"
-date: "April 2026"
+date: "May 2026"
 ---
 
 # 1. Purpose and scope
 
 This document specifies the design intent for an experimental **bridge between Compute Express Link (CXL)** traffic and a **UCIe-compatible adapter-layer interface**. The implementation targets **Verilog** suitable for simulation with **Icarus Verilog** (`iverilog` / `vvp`).
 
-**In scope today:** simulation bring-up, a documented module boundary, a typed packet taxonomy covering CXL.io / CXL.mem / CXL.cache and matching UCIe adapter completions, a lightweight credit and ordering model (posted vs. non-posted domain split with posted-priority egress arbitration), and a path toward link bring-up.
+**In scope today:** simulation bring-up, a documented module boundary, a typed packet taxonomy covering CXL.io / CXL.mem / CXL.cache and matching UCIe adapter completions, a dual-clock asynchronous architecture with robust credit-based flow control, and a link bring-up model.
 
-**Out of scope for the current RTL:** full CXL protocol compliance, production UCIe PHY and link training, payload movement, retries, and reset / link bring-up sequencing (described here as requirements to be met by future revisions).
+**Out of scope for the current RTL:** full CXL protocol compliance, production UCIe PHY and link training, payload movement, retries, and full link bring-up sequencing.
 
 # 2. Background
 
@@ -20,168 +20,181 @@ CXL defines memory, cache-coherent, and I/O semantics over a PCIe physical layer
 
 The bridge is intended to support:
 
-1. **Protocol translation** — Map CXL.io, CXL.cache, and CXL.mem concepts to and from UCIe adapter-layer traffic (exact packet formats TBD).
-2. **Credit-based flow control** — Reflect credits available from each side so the bridge does not overrun peer buffers.
-3. **Ordering preservation** — Maintain required ordering classes between ingress and egress where the specifications demand it.
-4. **Link bring-up model** — Eventually model reset, training handshakes, and readiness gates relevant to safe traffic acceptance.
+1. **Protocol translation** — Map CXL.io, CXL.cache, and CXL.mem concepts to and from UCIe adapter-layer traffic.
+2. **Asynchronous Operation** — Support independent clock domains for CXL and UCIe logic.
+3. **Credit-based flow control** — Reflect credits available from each side so the bridge does not overrun peer buffers.
+4. **Ordering preservation** — Maintain required ordering classes (Posted vs. Non-Posted) between ingress and egress.
+5. **Link bring-up model** — Model reset, training handshakes, and readiness gates relevant to safe traffic acceptance.
 
 # 4. Architecture
+
+The bridge provides a low-latency, credit-flow-controlled translation layer between a CXL-facing domain and a UCIe-facing domain.
+
+```mermaid
+graph LR
+    subgraph "CXL Domain (clk)"
+        CI[CXL Ingress]
+        CO[CXL Egress]
+        RC[Reset Sync]
+        CC[Credit Counters]
+    end
+
+    subgraph "UCIe Domain (ucie_clk)"
+        UI[UCIe Ingress]
+        UO[UCIe Egress]
+        RU[Reset Sync]
+        ARB[Arbiter]
+    end
+
+    CI -- Posted --> AF1[Async FIFO] --> ARB --> UO
+    CI -- Non-Posted --> AF2[Async FIFO] --> ARB --> UO
+    UI -- Completion --> AF3[Async FIFO] --> CO
+
+    ARB -- return pulse --> CC
+    CO  -- return pulse --> CC
+```
 
 ## 4.1 Target architecture (summary)
 
 At a high level, the bridge sits between:
+- A **CXL-facing port** (logical aggregation of CXL.io / CXL.cache / CXL.mem).
+- A **UCIe-facing port** (adapter-layer ingress and egress).
 
-- A **CXL-facing port** (logical aggregation of CXL.io / CXL.cache / CXL.mem as seen by the design).
-- A **UCIe-facing port** (adapter-layer ingress and egress consistent with the chosen UCIe stack profile).
+## 4.2 Current implementation (Phase 6 baseline)
 
-Internal blocks (to be elaborated in later revisions) may include buffering, translation tables, credit trackers, and optional reorder queues subject to specification rules.
+The repository contains a **Phase 6 RTL** featuring a **dual-clock asynchronous architecture**, robust **reset synchronization**, and **granular protocol support**.
 
-## 4.2 Current implementation (Phase 5 baseline)
+### 4.2.1 Protocol Translation
 
-The repository contains a **Phase 5 RTL** that features a **dual-clock asynchronous architecture**, separating the **CXL domain** (`clk`) from the **UCIe domain** (`ucie_clk`). It uses **asynchronous FIFOs** (`src/async_fifo.v`) for cross-domain buffering, robust **reset synchronization** (`src/reset_sync.v`), and **CDC synchronizers** (`src/cdc_sync.v`) for all external control signals (`link_up`, `err_inj_en`).
+The bridge performs combinational field remapping on ingress. The mapping for CXL to UCIe is summarized below:
 
-The top RTL module is `cxl_ucie_bridge`. It parameterizes flit width (`WIDTH`, default 64 bits) and FIFO depth (`FIFO_DEPTH`, default 8; must be a power of two). The translation layer assumes **64-bit packets** with shared field definitions in `src/cxl_ucie_bridge_defs.vh`.
+| CXL Kind | CXL Opcode | UCIe Message Type | Ordering Class |
+|:---|:---|:---|:---|
+| `CXL_IO_REQ` | Any | `UCIE_MSG_CFG` | Non-Posted |
+| `CXL_MEM_RD` | `RD` | `UCIE_MSG_MEM_RD` | Non-Posted |
+| `CXL_MEM_RD` | `RD_DATA` | `UCIE_MSG_MEM_RD_DATA` | Non-Posted |
+| `CXL_MEM_WR` | `WR` | `UCIE_MSG_MEM_WR` | Posted |
+| `CXL_MEM_WR` | `WR_DATA` | `UCIE_MSG_MEM_WR_DATA` | Posted |
+| `CXL_CACHE_RD` | `RD` | `UCIE_MSG_CACHE_RD` | Non-Posted |
+| `CXL_CACHE_RD` | `RD_DATA` | `UCIE_MSG_CACHE_RD_DATA` | Non-Posted |
+| `CXL_CACHE_WR` | `WR` | `UCIE_MSG_CACHE_WR` | Posted |
+| `CXL_CACHE_WR` | `WR_DATA` | `UCIE_MSG_CACHE_WR_DATA` | Posted |
 
-**CXL → UCIe path** uses two independent async FIFOs:
-- `u_c2u_posted` — posted requests (`MEM_WR`, `CACHE_WR`)
-- `u_c2u_np` — non-posted requests (all other CXL kinds)
+### 4.2.2 Flow Control (Credits)
 
-The egress arbiter (running on `ucie_clk`) selects between the two FIFOs using posted-priority arbitration. A registered lock (`arb_locked_r` / `arb_sel_posted_r`) freezes the selected FIFO for the duration of any stalled handshake, ensuring `ucie_out_data` remains stable while `ucie_out_valid` is asserted and `ucie_out_ready` is deasserted.
+Flow control is managed via a **toggle-based credit return mechanism** that safely crosses clock domains without pulse loss. Credits are consumed on FIFO write and returned on FIFO read from the peer domain.
 
-**UCIe → CXL path** uses a single async FIFO (`u_u2c`).
+```mermaid
+sequenceDiagram
+    participant D as Destination Domain (clk_dst)
+    participant S as Source Domain (clk_src)
+    Note over S: Packet read from FIFO
+    S->>S: Toggle src_toggle_r
+    S-->>D: Cross CDC (2-flop)
+    Note over D: detect toggle change
+    D->>D: Pulse dst_pulse (1 cycle)
+    D->>D: Increment Credit Counter
+```
 
-Each direction uses a **valid/ready** interface with standard backpressure: upstream `ready` is asserted when the target FIFO is not full; downstream sees `valid` when the output FIFO (or arbiter) has data.
+### 4.2.3 Asynchronous Buffering
 
-Unsupported packet kinds are not dropped; they are converted into an explicit error or invalid packet kind on the output side so the testbench and downstream logic can observe the mismatch.
-
-## 4.3 Implemented packet taxonomy (Phases 1–2)
-
-Phase 1 froze a narrow first target (CXL.io request ↔ UCIe adapter completion) to make semantics exercise-able without claiming full protocol compliance. Phase 2 broadened the packet taxonomy to cover:
-
-1. **CXL-facing ingress:** `CXL.io` requests (CFG_RD, CFG_WR, MEM_RD, MEM_WR) and `CXL.mem` / `CXL.cache` requests (MEM_RD, MEM_WR, CACHE_RD, CACHE_WR)
-2. **UCIe-facing ingress:** UCIe adapter completions — `AD_CPL`, `MEM_CPL`, `CACHE_CPL` — each with checksum verification
-3. **Translation behavior:** field remap, opcode/kind preservation, CRC-8/CCITT checksum generation and verification (poly 0x07, init 0x00, over header bytes [63:8])
-4. **Remaining non-goals:** payload movement, retries, full CXL ordering compliance, and link bring-up
-
-## 4.5 Bring-up and non-ideal behavior (Phase 4/5)
-
-Phase 4/5 adds a link-state readiness gate, a reset-drain FSM, an error injection interface, and robust CDC/reset synchronization.
-
-**Reset-drain FSM (`src/reset_drain.v`):** A `reset_drain` module implements a three-state machine that gates the bridge open or closed based on a synchronized `link_up` signal:
-
-| State | Meaning | Transition |
-|-------|---------|------------|
-| `S_DOWN` | Bridge closed; no new ingress accepted | → `S_UP` when `link_up` asserted |
-| `S_UP` | Bridge open; normal operation | → `S_DRAIN` when `link_up` deasserted |
-| `S_DRAIN` | Bridge closed; draining in-flight packets | → `S_DOWN` when all FIFOs empty |
-
-The bridge's `cxl_in_ready` and `ucie_in_ready` are gated by the FSM's `open` output (synchronized to each domain), so de-asserting `link_up` immediately stops new traffic acceptance while existing FIFO contents drain normally via the egress path. The `drain_done` output signals when it is safe to power-down or re-sequence the link.
-
-**Error injection interface:** The `err_inj_en` input allows a testbench or external agent to corrupt the next outgoing CXL→UCIe packet. This signal is synchronized to the `clk` domain. When `err_inj_en_clk` is asserted, bit 0 of the translated packet's checksum byte is flipped before the packet enters the FIFO.
-
-**Reset synchronization:** Standalone `reset_sync` modules provide asynchronous assertion and synchronous deassertion of reset for both the `clk` and `ucie_clk` domains, ensuring clean initialization and startup.
-
-## 4.4 Flow control and ordering (Phase 3)
-
-Phase 3 adds per-direction credit counters and splits the CXL→UCIe path into two ordering domains:
-
-**Credit counting (`src/credit_counter.v`):** A parameterized `credit_counter` module tracks available send credits per direction. Credits are consumed when a packet enters a FIFO and returned automatically when the downstream reads the packet. The bridge gates `cxl_in_ready` on both local FIFO space and credit availability, so an exhausted credit pool stalls the source cleanly without overrunning peer buffers.
-
-**Ordering domain split:** CXL defines two classes of traffic with different ordering rules:
-
-| Class | CXL kinds | UCIe msg type | Rule |
-|-------|-----------|---------------|------|
-| Posted | `MEM_WR`, `CACHE_WR` | `UCIE_MSG_MEM_WR`, `UCIE_MSG_CACHE_WR` | May bypass non-posted |
-| Non-posted | `IO_REQ`, `MEM_RD`, `CACHE_RD` | `UCIE_MSG_*` (other) | Must preserve ordering within class |
-
-The bridge routes posted packets to `u_c2u_posted` and non-posted packets to `u_c2u_np` — two independent sync FIFOs, each with its own credit counter. The egress arbiter is **posted-priority**: when both FIFOs have data, posted packets drain first (consistent with CXL's permission for posted traffic to bypass non-posted). Within each class, FIFO ordering preserves packet sequence.
-
-The UCIe→CXL path (completions only) remains a single FIFO with its own credit counter (`u_cpl_crd`).
+Three independent **Asynchronous FIFOs** (`src/async_fifo.v`) handle cross-domain buffering:
+- `u_c2u_posted`: CXL Domain Ingress -> UCIe Domain Egress (Posted)
+- `u_c2u_np`: CXL Domain Ingress -> UCIe Domain Egress (Non-Posted)
+- `u_u2c`: UCIe Domain Ingress -> CXL Domain Egress (Completions)
 
 # 5. Interface summary
 
-## 5.1 Common
+## 5.1 Common & Control
 
-| Signal   | Direction | Description        |
-|----------|-----------|--------------------|
-| `clk`    | Input     | Core clock         |
-| `rst_n`  | Input     | Asynchronous reset, active low |
+| Signal | Dir | Domain | Description |
+|:---|:---|:---|:---|
+| `clk` | In | N/A | CXL domain core clock. |
+| `ucie_clk` | In | N/A | UCIe domain core clock. |
+| `rst_n` | In | Async | Global asynchronous reset (active low). |
+| `link_up` | In | clk | Link status; initiates FSM transitions. |
+| `err_inj_en` | In | clk | Enables CRC error injection on next C2U flit. |
+| `drain_done` | Out | clk | Asserted when link is DOWN and all buffers are empty. |
 
-## 5.2 CXL → UCIe path
+## 5.2 CXL Port (CXL Domain)
 
-| Signal           | Direction (from bridge) | Description              |
-|------------------|-------------------------|--------------------------|
-| `cxl_in_valid`   | Input                   | Ingress beat valid       |
-| `cxl_in_ready`   | Output                  | Ingress ready          |
-| `cxl_in_data`    | Input                   | Ingress flit (`WIDTH`) |
-| `ucie_out_valid` | Output                  | Egress beat valid      |
-| `ucie_out_ready` | Input                   | Egress ready           |
-| `ucie_out_data`  | Output                  | Egress flit (`WIDTH`)  |
+| Signal | Dir | Description |
+|:---|:---|:---|
+| `cxl_in_valid` | In | Valid for ingress CXL flit. |
+| `cxl_in_ready` | Out | Ready for ingress CXL flit (gated by credits and FIFO space). |
+| `cxl_in_data` | In | 64-bit CXL flit data. |
+| `cxl_out_valid` | Out | Valid for egress CXL flit (completions). |
+| `cxl_out_ready` | In | Ready for egress CXL flit. |
+| `cxl_out_data` | Out | 64-bit CXL flit data. |
 
-## 5.3 UCIe → CXL path
+## 5.3 UCIe Port (UCIe Domain)
 
-| Signal           | Direction (from bridge) | Description              |
-|------------------|-------------------------|--------------------------|
-| `ucie_in_valid`  | Input                   | Ingress beat valid       |
-| `ucie_in_ready`  | Output                  | Ingress ready            |
-| `ucie_in_data`   | Input                   | Ingress flit (`WIDTH`)   |
-| `cxl_out_valid`  | Output                  | Egress beat valid        |
-| `cxl_out_ready`  | Input                   | Egress ready             |
-| `cxl_out_data`   | Output                  | Egress flit (`WIDTH`)    |
+| Signal | Dir | Description |
+|:---|:---|:---|
+| `ucie_in_valid` | In | Valid for ingress UCIe flit. |
+| `ucie_in_ready` | Out | Ready for ingress UCIe flit (gated by credits and FIFO space). |
+| `ucie_in_data` | In | 64-bit UCIe flit data. |
+| `ucie_out_valid` | Out | Valid for egress UCIe flit (requests). |
+| `ucie_out_ready` | In | Ready for egress UCIe flit. |
+| `ucie_out_data` | Out | 64-bit UCIe flit data. |
 
-# 6. Verification
+# 6. Bring-up and non-ideal behavior
 
-- **Simulator:** Icarus Verilog (`iverilog` compilation, `vvp` execution).
-- **Lint (second opinion):** Verilator `--lint-only` on `sync_fifo` + `cxl_ucie_bridge` (CI), without elaborating the testbench.
-- **Formal:** SymbiYosys (`sby`) targets three modules. `formal/sync_fifo.sby`: bounded **BMC** (safety asserts on `count`), **cover** reachability (full, simultaneous read/write, mid occupancy), and `async2sync` after `prep` for active-low asynchronous reset; BMC uses **initial assumptions** so registers are not unconstrained at time zero. `formal/cxl_ucie_bridge.sby`: BMC checks translation kind-preservation (CXL kind → correct UCIe kind, bad checksum → INVALID), ordering-domain routing (accepted packets route to exactly one FIFO), arbiter correctness (`c2u_posted_rd == arb_sel_final`, posted-priority invariant when unlocked), link-gating (`!bridge_open → cxl_in_ready == 0 && ucie_in_ready == 0`), and error injection (`err_inj_en` flips bit 0 and only bit 0 of the translated packet); cover mode adds link-down stall, error injection firing, and `drain_done` reachability. `formal/reset_drain.sby`: BMC checks FSM state encoding, `open` tied to `S_UP` only, `drain_done == all_empty`; cover reaches all three states including a full DOWN→UP→DRAIN→DOWN cycle. Assertions and covers are `FORMAL`-guarded in RTL. CI uses the OSS CAD Suite installer action.
-- **Testbench:** `tb_cxl_ucie_bridge` runs smoke tests for every packet kind (CXL.io, CXL.mem, CXL.cache requests; AD_CPL, MEM_CPL, CACHE_CPL completions), an ordering directed test (posted drains before non-posted when both FIFOs are loaded), a link-gating test (de-assert `link_up`, verify `cxl_in_ready=0`, wait for `drain_done`, re-assert and verify normal operation), an error injection test (assert `err_inj_en` for one beat, verify checksum bit 0 is flipped on egress), then stress with concurrent bidirectional traffic, random sink `ready`, and semantic scoreboarding split by ordering class. The `cxl_ucie_bridge_chk` module checks egress **ready/valid** stability rules (valid must not retract, data must not change while valid && !ready) during simulation.
-- **Scoreboard behavior:** The testbench uses a reusable per-cycle scoreboard step and explicitly accounts for transfers on the stress-to-drain boundary clock edge before disabling new source traffic.
-- **Automation:** The `test/` directory provides a `Makefile` with targets `run`, `vcd` (optional waveform dump to `build/waves.vcd`), and `gtkwave` (regenerate VCD and open GTKWave when available). On Windows, `test/run_sim.ps1` runs the same compile and `vvp` steps when `iverilog`/`vvp` are on `PATH`.
+## 6.1 Reset-drain FSM
 
-Optional waveform dumps are enabled with the `+vcd` plus argument; GTKWave is used for inspection.
+The `reset_drain` module manages link state transitions.
 
-# 7. Repository layout (relevant paths)
+```mermaid
+stateDiagram-v2
+    [*] --> S_DOWN : rst_n asserted
+    S_DOWN --> S_UP : link_up=1
+    S_UP --> S_DRAIN : link_up=0
+    S_DRAIN --> S_DOWN : all_empty=1
+    
+    note right of S_UP : bridge_open=1, Ingress active
+    note right of S_DRAIN : bridge_open=0, Egress draining
+```
 
-| Path | Role |
-|------|------|
-| `src/sync_fifo.v` | Parameterized synchronous FIFO |
-| `src/credit_counter.v` | Parameterized credit counter (consume / return / available) |
-| `src/reset_drain.v` | Link-state FSM (DOWN / UP / DRAIN) with link_up gate and drain_done |
-| `src/cdc_sync.v` | N-stage CDC synchronizer utility (for future multi-clock use) |
-| `src/cxl_ucie_bridge_defs.vh` | Shared packet kinds, field locations, pack helpers, checksum helper |
-| `src/cxl_ucie_bridge.v` | Bridge RTL (split c2u FIFOs, credit counters, posted-priority arbiter, link gate, error injection) |
-| `src/cxl_ucie_bridge_chk.v` | Simulation checks (egress stability / no valid retraction) |
-| `src/tb_cxl_ucie_bridge.v` | Testbench |
-| `test/Makefile` | Simulation and waveform targets |
-| `test/run_sim.ps1` | Windows-oriented compile + `vvp` helper |
-| `formal/sync_fifo.sby` | SymbiYosys bounded BMC for `sync_fifo` (requires `sby`, e.g. OSS CAD Suite) |
-| `formal/cxl_ucie_bridge.sby` | SymbiYosys BMC + cover for `cxl_ucie_bridge` (translation, routing, arbiter, link gate, error injection) |
-| `formal/reset_drain.sby` | SymbiYosys BMC + cover for `reset_drain` (FSM state encoding, open/drain_done invariants) |
-| `doc/design-spec.md` | This specification (source) |
-| `doc/Makefile` | PDF build for this document |
-| `CONTRIBUTING.md` | Simulation, formal, and CI notes for contributors |
+| State | Bridge Status | Behavior |
+|:---|:---|:---|
+| `S_DOWN` | Closed | Ingress `ready` is deasserted. Logic is idle. |
+| `S_UP` | Open | Normal operation; ingress and egress active. |
+| `S_DRAIN` | Closed | Ingress `ready` is deasserted. Egress continues to drain existing FIFO contents. |
+
+# 7. Verification
+
+## 7.1 Directed & Stress Tests
+- **Simulator:** Icarus Verilog.
+- **Suite:** `tb_cxl_ucie_bridge.v` covers every packet kind, ordering rules, link gating, and heavy concurrent stress.
+
+## 7.2 Formal Verification
+- **Tool:** SymbiYosys (`sby`).
+- **Scope:**
+    - `sync_fifo.sby`: FIFO safety (no overflow/underflow).
+    - `reset_drain.sby`: FSM transition validity.
+    - `cxl_ucie_bridge.sby`: End-to-end invariants, credit availability, and protocol mapping correctness.
+
+## 7.3 UVM Environment
+- **Location:** `verification/uvm/`.
+- **Status:** Structurally complete for Phase 6. Features independent CXL and UCIe agents with monitors and a cross-domain scoreboard.
 
 # 8. Roadmap (phased milestones)
 
-Work is expected to proceed roughly in the following order; later phases depend on chosen protocol profiles and tooling.
+1. **Narrow first target (done ✓)** — Typed 64-bit packet definitions, synchronous FIFO.
+2. **Broaden typed traffic (done ✓)** — Full CXL.io / CXL.mem / CXL.cache packet taxonomy.
+3. **Flow control and ordering (done ✓)** — Posted/non-posted ordering domain split.
+4. **Bring-up and non-ideal behavior (done ✓)** — `reset_drain` link-state FSM.
+5. **Dual-clock asynchronous architecture (done ✓)** — Separated `clk` and `ucie_clk` domains.
+6. **Advanced Protocol & Flow Control (done ✓)** — Granular opcodes, integrated cross-domain credit counters.
 
-1. **Narrow first target (done ✓)** — Typed 64-bit packet definitions, simplified `CXL.io` request translation, simplified UCIe completion translation, synchronous FIFO buffering, ready/valid checks, simulation and bounded formal on the FIFO, second-opinion lint (Verilator).
-2. **Broaden typed traffic (done ✓)** — Full CXL.io / CXL.mem / CXL.cache packet taxonomy, matching UCIe adapter message families, expanded scoreboarding and formal assertions, GTKWave save file.
-3. **Flow control and ordering (done ✓)** — Per-direction credit counters, posted/non-posted ordering domain split, posted-priority egress arbiter, ordering directed test, credit-exhaustion formal covers.
-4. **Bring-up and non-ideal behavior (done ✓)** — `reset_drain` link-state FSM, `link_up` readiness gate, `err_inj_en` error injection interface, `cdc_sync` CDC synchronizer utility.
-5. **Dual-clock asynchronous architecture (done ✓)** — Separated `clk` and `ucie_clk` domains, `async_fifo` integration, `reset_sync` reset synchronization, robust CDC for all control signals, refined `drain_done` and link-state FSM logic.
+# 9. Repository layout
 
-# 9. Future work (detail)
-
-- Expand coverage to constrained-random stimulus and coverage-driven closure (tooling beyond iverilog likely required for advanced methodologies).
-- Document **reset and link bring-up** sequences and corresponding RTL interfaces in more detail (Phase 4 provides the FSM skeleton; handshake timing diagrams and sequence documentation remain).
-- Expand the design specification with **timing, clocking, and CDC** assumptions as the design adds multiple clock domains or PHY-facing logic (the `cdc_sync` utility is in place; wiring it into the bridge requires a second clock domain input).
-
-# 10. Document control
-
-| Item | Value |
-|------|--------|
-| Format | Markdown (source), PDF (generated) |
-| Revision | Draft — aligned with repository baseline RTL |
-
-This specification is maintained alongside the RTL; discrepancies should be resolved by updating either the document or the implementation and recording the change in revision control.
+| Path | Role |
+|------|------|
+| `src/async_fifo.v` | Dual-clock asynchronous FIFO. |
+| `src/credit_counter.v` | Parameterized credit tracker. |
+| `src/credit_pulse_sync.v` | Toggle-based credit pulse synchronizer. |
+| `src/reset_sync.v` | Asynchronous assert, synchronous deassert reset handler. |
+| `src/cxl_ucie_bridge.v` | Top-level bridge RTL. |
+| `verification/` | Directed, Formal, and UVM environments. |
+| `doc/` | Design specification and documentation. |

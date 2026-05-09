@@ -1,45 +1,81 @@
-
 # UCIe to CXL Bridge
 
-Experimental **Verilog / SystemVerilog** RTL for a bridge between:
+[![CI Status](https://github.com/markrthomas/ucie-cxl-bridge/workflows/ci/badge.svg)](https://github.com/markrthomas/ucie-cxl-bridge/actions)
 
-- UCIe Adapter Layer
-- CXL.io / CXL.cache / CXL.mem
+Experimental **Verilog / SystemVerilog** RTL for a bridge between **UCIe Adapter Layer** and **CXL (io/cache/mem)**.
 
-Verification today uses **Icarus Verilog** (`iverilog` / `vvp`) with a directed + stress testbench (`tb_cxl_ucie_bridge`). **UVM** is not wired into the repo yet; see `doc/design-spec.md` for roadmap (including optional UVM later).
+## Project Overview
 
-## Goals
-- Protocol translation
-- credit flow control
-- ordering preservation
-- link bringup model
+The bridge facilitates communication between die-to-die UCIe interfaces and CXL-based protocol layers. It features a robust **dual-clock asynchronous architecture** (Phase 6 baseline) with cross-domain credit-based flow control.
 
-## Architecture
+```mermaid
+graph LR
+    subgraph CXL ["CXL Domain (clk)"]
+        direction TB
+        CI[Ingress]
+        CO[Egress]
+    end
+    
+    subgraph Bridge ["Bridge Logic"]
+        direction TB
+        F1[Posted FIFO]
+        F2[Non-Posted FIFO]
+        F3[Completion FIFO]
+    end
+    
+    subgraph UCIe ["UCIe Domain (ucie_clk)"]
+        direction TB
+        UI[Ingress]
+        UO[Egress]
+    end
 
-The bridge is a dual-clock asynchronous design with two independent valid/ready datapaths — one per direction — each backed by a parameterized asynchronous FIFO (`async_fifo`).
+    CI --> F1 & F2
+    F1 & F2 --> UO
+    UI --> F3
+    F3 --> CO
+```
 
-- **CXL domain (`clk`):** Handles ingress for CXL requests and egress for completions.
-- **UCIe domain (`ucie_clk`):** Handles egress for UCIe adapter requests and ingress for completions.
+## Key Features
 
-**CXL → UCIe path:** incoming `CXL.io` request packets are field-remapped into simplified UCIe adapter request packets. CFG reads and CFG writes are tagged as `UCIE_MSG_CFG`; all other ops map to `UCIE_MSG_MEM`. A lightweight XOR checksum is computed over the translated packet and written into the `misc` byte.
+- **Dual-Clock Domain**: Independent clocking for CXL and UCIe logic.
+- **Protocol Translation**: Seamless mapping between CXL.io/mem/cache and UCIe adapter flits.
+- **Credit Flow Control**: Hardware-enforced credits per traffic class (Posted, Non-Posted, Completion).
+- **Ordering Preservation**: Posted-priority arbitration to maintain spec-compliant ordering.
+- **Link State Management**: FSM-controlled power-up and drain sequences.
+- **Robust Verification**: 
+  - **Directed & Stress**: Concurrent bidirectional traffic with random backpressure.
+  - **Formal**: BMC and Cover targets for all critical control logic.
+  - **UVM**: Scalable, monitor-driven verification environment.
 
-**UCIe → CXL path:** incoming UCIe adapter completion packets are checksum-verified, then field-remapped into `CXL.io` completion packets. Packets with a failing checksum are converted to `CXL_PKT_KIND_INVALID` so downstream logic can observe the mismatch rather than silently dropping it. Unsupported packet kinds on either path produce an explicit error/invalid packet rather than being dropped.
+## Quick Start
 
-Packet field layout and pack/unpack helpers are defined in `src/cxl_ucie_bridge_defs.vh`. The top module asserts at elaboration time that `WIDTH == 64` (the typed model assumes 64-bit packets).
+### Simulation (Linux/WSL)
+```bash
+cd verification/directed
+make clean && make stress
+```
 
-## Status
-Phase 5 dual-clock model: asynchronous buffered translation between CXL (clk) and UCIe (ucie_clk) domains. Robust CDC for external control signals, reset synchronization, and a link-state gating FSM. Simulation CI, optional Verilator lint, bounded formal (BMC + cover) on the full bridge and FIFOs.
+### Formal Verification
+```bash
+cd verification/formal
+sby -f cxl_ucie_bridge.sby
+```
 
-## Current Scope
-- `CXL -> UCIe`: simplified `CXL.io` request packet translation
-- `UCIe -> CXL`: simplified UCIe adapter completion translation
-- Shared packet-field definitions live in `src/cxl_ucie_bridge_defs.vh`
-- Full `CXL.cache` / `CXL.mem` semantics, credits, and ordering policy remain future work
+### Linting
+```bash
+cd verification/directed
+make lint
+```
 
-## Quick start
+## Documentation
 
-- **Linux / WSL:** `cd test && make clean && make && make stress` (optional: `make lint` for Verilator). A checkout **outside** `/mnt/c/...` under native WSL (for example `~/proj/ucie-cxl-bridge`) is often faster; commands are unchanged.
-- **Windows (PowerShell):** `cd test; .\run_sim.ps1` (requires `iverilog` and `vvp` on `PATH`; optional `.\run_sim.ps1 lint` if Verilator is installed).
+- **Design Specification**: [doc/design-spec.md](doc/design-spec.md) - Detailed architecture, opcodes, and FSM logic.
+- **Verification Plan**: [verification/uvm/README.md](verification/uvm/README.md) - UVM environment and methodology.
+- **Contributing**: [CONTRIBUTING.md](CONTRIBUTING.md) - Setup guide and CI details.
 
-More detail (formal runs, CI, native WSL): [CONTRIBUTING.md](CONTRIBUTING.md).
+## Status: Phase 6 (Baseline)
 
+The current RTL implements granular protocol opcodes and fully integrated cross-domain credit counters. It is verified for structural integrity and logical correctness across varied clock ratios and traffic patterns.
+
+---
+*Experimental RTL — for educational and prototyping purposes.*
