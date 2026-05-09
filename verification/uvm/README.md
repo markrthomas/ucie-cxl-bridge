@@ -1,6 +1,6 @@
 # UVM Verification Environment
 
-This directory contains a **Universal Verification Methodology (UVM 1.2)** environment for the CXL-UCIe bridge. It provides a scalable, constrained-random alternative to the primary directed testbench, specifically designed for high-coverage closure.
+This directory contains a **Universal Verification Methodology (UVM 1.2)** scaffold for the CXL-UCIe bridge. It is intended to grow into a constrained-random environment while the directed testbench remains the primary executable regression.
 
 ## Architecture
 
@@ -38,10 +38,10 @@ graph TD
 ## Key Components
 
 ### 1. Scoreboard (`bridge_scoreboard`)
-The scoreboard performs end-to-end data integrity checks across the clock boundary.
-- **Predictor**: Models the combinational translation and CRC calculation logic.
-- **Checker**: Matches egress transactions against predicted items stored in class-specific queues (`c2u_exp_q`, `u2c_exp_q`).
-- **Flow Control**: Monitors credit exhaustion and ensures the DUT never overruns internal or peer buffers.
+The scoreboard is currently a skeleton for end-to-end checks across the clock boundary.
+- **Current behavior**: Captures CXL-side and UCIe-side monitor items and stores expected C2U/U2C items in simple queues.
+- **Next step**: Replace the placeholder queue model with translation-aware prediction that mirrors `cxl_ucie_bridge_defs.vh`.
+- **Flow-control goal**: Add credit-exhaustion and no-overrun checks once the prediction model is complete.
 
 ### 2. Monitor-Driven Agents
 Each agent is fully autonomous within its clock domain:
@@ -82,6 +82,25 @@ The `bridge_item` represents a single 64-bit beat with metadata for constrained-
 - **`bridge_base_seq`**: Basic 10-item randomized sequence.
 - **`bridge_stress_seq`**: Concurrent bidirectional traffic with maximum backpressure (planned).
 - **`bridge_credit_seq`**: Targeted stimulus to hit credit-exhaustion edge cases (planned).
+
+## Implementation Status
+
+| Component | Status | Notes |
+|:---|:---|:---|
+| `bridge_if` | Implemented | Provides independent clocking blocks for CXL, UCIe, and monitor sampling. |
+| CXL agent | Implemented scaffold | Includes sequencer, driver, and monitor. |
+| UCIe agent | Implemented scaffold | Includes sequencer, driver, and monitor. |
+| Base sequence | Implemented | Generates randomized `bridge_item` traffic. |
+| Scoreboard | Partial | Queue plumbing exists; protocol-accurate prediction is still planned. |
+| Stress / credit sequences | Planned | Directed stress currently provides the regression coverage. |
+
+## Relationship to Directed Tests
+
+| Environment | Best Use Today |
+|:---|:---|
+| `verification/directed` | Compile/lint/smoke/stress regression with Icarus Verilog and Verilator lint. |
+| `verification/formal` | Bounded proofs and cover targets for FIFO, reset-drain, and bridge invariants. |
+| `verification/uvm` | Starting point for commercial-simulator constrained-random development. |
 
 ## Getting Started
 

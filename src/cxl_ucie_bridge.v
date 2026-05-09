@@ -1,10 +1,9 @@
-// CXL <-> UCIe bridge — protocol mapping TBD.
-// Phase 5: dual-clock (clk=CXL domain, ucie_clk=UCIe domain), async FIFOs.
-// Phase 4: link readiness gate (reset_drain FSM), error injection interface.
-// Phase 3: posted/non-posted ordering domain split, posted-priority egress arbiter.
-// c2u path: two async FIFOs (posted, non-posted), write on clk, read on ucie_clk.
-// u2c path: one async FIFO, write on ucie_clk, read on clk.
-// Arbiter runs on ucie_clk.  Credit counters replaced by FIFO full/empty.
+// CXL <-> UCIe bridge.
+// Phase 6 baseline: dual-clock async FIFOs, typed CXL/UCIe packet mapping,
+// link readiness gating, error injection, and per-class credit counters.
+// c2u path: posted and non-posted FIFOs, written on clk and read on ucie_clk.
+// u2c path: completion FIFO, written on ucie_clk and read on clk.
+// Credit return pulses cross domains through toggle-based pulse synchronizers.
 
 /* verilator lint_off UNUSEDPARAM */
 `include "cxl_ucie_bridge_defs.vh"

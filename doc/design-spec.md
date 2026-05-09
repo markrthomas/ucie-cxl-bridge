@@ -64,6 +64,50 @@ At a high level, the bridge sits between:
 
 The repository contains a **Phase 6 RTL** featuring a **dual-clock asynchronous architecture**, robust **reset synchronization**, and **granular protocol support**.
 
+### 4.2.0 Implementation block diagram
+
+```mermaid
+flowchart LR
+    subgraph CXL["CXL clock domain: clk"]
+        CIN["cxl_in_* handshake"]
+        CLASS["kind classifier"]
+        PCRED["posted credit_counter"]
+        NCRED["NP credit_counter"]
+        LINK["reset_drain FSM"]
+        COUT["cxl_out_* handshake"]
+    end
+
+    subgraph CDC["Clock-domain crossing"]
+        PFIFO["posted async_fifo"]
+        NFIFO["non-posted async_fifo"]
+        CFIFO["completion async_fifo"]
+        PRET["posted credit_pulse_sync"]
+        NRET["NP credit_pulse_sync"]
+        CRET["completion credit_pulse_sync"]
+    end
+
+    subgraph UCIE["UCIe clock domain: ucie_clk"]
+        ARB["posted-priority arbiter"]
+        UOUT["ucie_out_* handshake"]
+        UIN["ucie_in_* handshake"]
+        CCRED["completion credit_counter"]
+    end
+
+    CIN --> CLASS
+    CLASS -->|posted packet| PFIFO --> ARB
+    CLASS -->|non-posted packet| NFIFO --> ARB
+    ARB --> UOUT
+    UIN -->|completion packet| CFIFO --> COUT
+    PCRED -. gates posted writes .-> CIN
+    NCRED -. gates non-posted writes .-> CIN
+    CCRED -. gates completion writes .-> UIN
+    ARB -. read return .-> PRET -.-> PCRED
+    ARB -. read return .-> NRET -.-> NCRED
+    COUT -. read return .-> CRET -.-> CCRED
+    LINK -. gates ingress .-> CIN
+    LINK -. gates ingress .-> UIN
+```
+
 ### 4.2.1 Protocol Translation
 
 The bridge performs combinational field remapping on ingress. The mapping for CXL to UCIe is summarized below:
@@ -79,6 +123,16 @@ The bridge performs combinational field remapping on ingress. The mapping for CX
 | `CXL_CACHE_RD` | `RD_DATA` | `UCIE_MSG_CACHE_RD_DATA` | Non-Posted |
 | `CXL_CACHE_WR` | `WR` | `UCIE_MSG_CACHE_WR` | Posted |
 | `CXL_CACHE_WR` | `WR_DATA` | `UCIE_MSG_CACHE_WR_DATA` | Posted |
+
+The UCIe-to-CXL completion path validates the checksum before emitting a completion. A bad checksum or unsupported UCIe packet kind maps to `CXL_PKT_KIND_INVALID`.
+
+| UCIe Kind | Checksum | CXL Kind | Notes |
+|:---|:---|:---|:---|
+| `UCIE_PKT_KIND_AD_CPL` | Pass | `CXL_PKT_KIND_IO_CPL` | Adapter completion maps to CXL.io completion. |
+| `UCIE_PKT_KIND_MEM_CPL` | Pass | `CXL_PKT_KIND_MEM_CPL` | Memory completion status and metadata are preserved. |
+| `UCIE_PKT_KIND_CACHE_CPL` | Pass | `CXL_PKT_KIND_CACHE_CPL` | Cache completion status and metadata are preserved. |
+| Any supported completion | Fail | `CXL_PKT_KIND_INVALID` | Invalid checksum is converted to an invalid CXL packet. |
+| Other UCIe kind | Any | `CXL_PKT_KIND_INVALID` | Unsupported ingress traffic is rejected by translation. |
 
 ### 4.2.2 Flow Control (Credits)
 
@@ -96,6 +150,14 @@ sequenceDiagram
     D->>D: Increment Credit Counter
 ```
 
+| Credit Class | Counter Domain | Consumed By | Returned By | Destination Buffer |
+|:---|:---|:---|:---|:---|
+| Posted | `clk` | `c2u_posted_wr` | `c2u_posted_rd` crossed from `ucie_clk` | `u_c2u_posted` |
+| Non-Posted | `clk` | `c2u_np_wr` | `c2u_np_rd` crossed from `ucie_clk` | `u_c2u_np` |
+| Completion | `ucie_clk` | `u2c_wr` | `u2c_rd` crossed from `clk` | `u_u2c` |
+
+Ingress `ready` is asserted only when the link is open, the target FIFO is not full in the write domain, and the matching credit counter reports availability. FIFO full protects local storage; credits model downstream capacity.
+
 ### 4.2.3 Asynchronous Buffering
 
 Three independent **Asynchronous FIFOs** (`src/async_fifo.v`) handle cross-domain buffering:
@@ -103,9 +165,63 @@ Three independent **Asynchronous FIFOs** (`src/async_fifo.v`) handle cross-domai
 - `u_c2u_np`: CXL Domain Ingress -> UCIe Domain Egress (Non-Posted)
 - `u_u2c`: UCIe Domain Ingress -> CXL Domain Egress (Completions)
 
-# 5. Interface summary
+| FIFO | Write Clock | Read Clock | Read Policy | Empty/Full Use |
+|:---|:---|:---|:---|:---|
+| `u_c2u_posted` | `clk` | `ucie_clk` | FWFT, read when UCIe accepts selected beat | Write full gates posted CXL ingress. Read empty drives arbiter. |
+| `u_c2u_np` | `clk` | `ucie_clk` | FWFT, read when UCIe accepts selected beat | Write full gates non-posted CXL ingress. Read empty drives arbiter. |
+| `u_u2c` | `ucie_clk` | `clk` | FWFT, read when CXL accepts completion | Write full gates UCIe ingress. Read empty drives CXL egress valid. |
 
-## 5.1 Common & Control
+The async FIFO uses binary pointers locally and synchronizes Gray-coded pointers into the opposite clock domain. `DEPTH` must be a power of two and at least four entries.
+
+### 4.2.4 Ordering and arbitration
+
+The CXL-to-UCIe request path splits posted and non-posted traffic before crossing clock domains. The UCIe egress arbiter gives posted traffic priority when both request classes are non-empty. When `ucie_out_valid` is asserted and `ucie_out_ready` is low, the arbiter locks the selected FIFO until the beat is accepted so `ucie_out_data` remains stable during backpressure.
+
+```mermaid
+stateDiagram-v2
+    [*] --> Unlocked
+    Unlocked --> Unlocked : selected beat accepted
+    Unlocked --> Locked : valid && !ready / latch selection
+    Locked --> Locked : !ready / hold selection
+    Locked --> Unlocked : ready / release selection
+```
+
+| Condition | Selected FIFO |
+|:---|:---|
+| Posted non-empty | Posted |
+| Posted empty, non-posted non-empty | Non-posted |
+| Both empty | No valid egress beat |
+| Backpressured beat in flight | Previously selected FIFO until handshake completes |
+
+# 5. Packet format
+
+The RTL uses a compact 64-bit typed packet format for simulation and formal reasoning. This format is intentionally smaller than real CXL/UCIe protocol headers.
+
+```text
+  63      60 59      56 55      48 47              32
+ +----------+----------+----------+------------------+
+ | kind     | code     | tag/txn  | addr/byte_count  |
+ +----------+----------+----------+------------------+
+  31      24 23      16 15       8 7                0
+ +----------+----------+----------+------------------+
+ | length   | id       | aux      | misc/checksum    |
+ +----------+----------+----------+------------------+
+```
+
+| Field | Bits | CXL Request Meaning | CXL Completion Meaning | UCIe Meaning |
+|:---|:---|:---|:---|:---|
+| `kind` | `[63:60]` | Packet family such as IO, MEM_RD, MEM_WR, CACHE_RD, CACHE_WR | Completion family | Adapter request/completion/error kind |
+| `code` | `[59:56]` | Request opcode | Completion status | Message type or completion status |
+| `tag/txn` | `[55:48]` | Request tag | Completion tag | Transaction ID |
+| `addr/byte_count` | `[47:32]` | Address slice | Byte count | Address slice or byte count |
+| `length` | `[31:24]` | Length in DW | Length in DW | Length in DW |
+| `id` | `[23:16]` | Requester ID | Completer ID | Source ID |
+| `aux` | `[15:8]` | Attributes or first DW byte enable | Lower address | Attributes or lower address |
+| `misc/checksum` | `[7:0]` | Reserved in CXL helpers | Reserved in CXL helpers | CRC-8/CCITT checksum over bits `[63:8]` |
+
+# 6. Interface summary
+
+## 6.1 Common & Control
 
 | Signal | Dir | Domain | Description |
 |:---|:---|:---|:---|
@@ -116,7 +232,7 @@ Three independent **Asynchronous FIFOs** (`src/async_fifo.v`) handle cross-domai
 | `err_inj_en` | In | clk | Enables CRC error injection on next C2U flit. |
 | `drain_done` | Out | clk | Asserted when link is DOWN and all buffers are empty. |
 
-## 5.2 CXL Port (CXL Domain)
+## 6.2 CXL Port (CXL Domain)
 
 | Signal | Dir | Description |
 |:---|:---|:---|
@@ -127,7 +243,7 @@ Three independent **Asynchronous FIFOs** (`src/async_fifo.v`) handle cross-domai
 | `cxl_out_ready` | In | Ready for egress CXL flit. |
 | `cxl_out_data` | Out | 64-bit CXL flit data. |
 
-## 5.3 UCIe Port (UCIe Domain)
+## 6.3 UCIe Port (UCIe Domain)
 
 | Signal | Dir | Description |
 |:---|:---|:---|
@@ -138,9 +254,9 @@ Three independent **Asynchronous FIFOs** (`src/async_fifo.v`) handle cross-domai
 | `ucie_out_ready` | In | Ready for egress UCIe flit. |
 | `ucie_out_data` | Out | 64-bit UCIe flit data. |
 
-# 6. Bring-up and non-ideal behavior
+# 7. Bring-up and non-ideal behavior
 
-## 6.1 Reset-drain FSM
+## 7.1 Reset-drain FSM
 
 The `reset_drain` module manages link state transitions.
 
@@ -161,33 +277,52 @@ stateDiagram-v2
 | `S_UP` | Open | Normal operation; ingress and egress active. |
 | `S_DRAIN` | Closed | Ingress `ready` is deasserted. Egress continues to drain existing FIFO contents. |
 
-# 7. Verification
+# 8. Verification
 
-## 7.1 Directed & Stress Tests
+## 8.1 Directed & Stress Tests
 - **Simulator:** Icarus Verilog.
 - **Suite:** `tb_cxl_ucie_bridge.v` covers every packet kind, ordering rules, link gating, and heavy concurrent stress.
 
-## 7.2 Formal Verification
+| Test Area | Covered Behavior |
+|:---|:---|
+| Link gating | Ingress ready deasserts while link is down and resumes after link up. |
+| Granular opcodes | CXL.io, CXL.mem, and CXL.cache requests map to expected UCIe message types. |
+| Error injection | CRC bit flip produces detectable invalid completion behavior. |
+| Clock ratios | Directed smoke runs at 1:1, 2:1, and 1:3 CXL:UCIe clock ratios. |
+| Stress | Concurrent bidirectional traffic with randomized sink backpressure. |
+
+## 8.2 Formal Verification
 - **Tool:** SymbiYosys (`sby`).
 - **Scope:**
     - `sync_fifo.sby`: FIFO safety (no overflow/underflow).
     - `reset_drain.sby`: FSM transition validity.
     - `cxl_ucie_bridge.sby`: End-to-end invariants, credit availability, and protocol mapping correctness.
 
-## 7.3 UVM Environment
+## 8.3 UVM Environment
 - **Location:** `verification/uvm/`.
-- **Status:** Structurally complete for Phase 6. Features independent CXL and UCIe agents with monitors and a cross-domain scoreboard.
+- **Status:** Starter UVM scaffold for Phase 6. It includes independent CXL and UCIe agents, drivers, monitors, a virtual interface, and a scoreboard skeleton. The executable regression baseline remains the directed testbench.
 
-# 8. Roadmap (phased milestones)
+# 9. Roadmap (phased milestones)
 
-1. **Narrow first target (done ✓)** — Typed 64-bit packet definitions, synchronous FIFO.
-2. **Broaden typed traffic (done ✓)** — Full CXL.io / CXL.mem / CXL.cache packet taxonomy.
-3. **Flow control and ordering (done ✓)** — Posted/non-posted ordering domain split.
-4. **Bring-up and non-ideal behavior (done ✓)** — `reset_drain` link-state FSM.
-5. **Dual-clock asynchronous architecture (done ✓)** — Separated `clk` and `ucie_clk` domains.
-6. **Advanced Protocol & Flow Control (done ✓)** — Granular opcodes, integrated cross-domain credit counters.
+1. **Narrow first target (done)** — Typed 64-bit packet definitions, synchronous FIFO.
+2. **Broaden typed traffic (done)** — Full CXL.io / CXL.mem / CXL.cache packet taxonomy.
+3. **Flow control and ordering (done)** — Posted/non-posted ordering domain split.
+4. **Bring-up and non-ideal behavior (done)** — `reset_drain` link-state FSM.
+5. **Dual-clock asynchronous architecture (done)** — Separated `clk` and `ucie_clk` domains.
+6. **Advanced Protocol & Flow Control (done)** — Granular opcodes, integrated cross-domain credit counters.
 
-# 9. Repository layout
+# 10. Implementation limits
+
+| Area | Current Bound |
+|:---|:---|
+| Header model | Uses a compact 64-bit pedagogical packet format instead of full protocol headers. |
+| Payloads | Does not transport separate data payload beats beyond the modeled header/data opcode distinction. |
+| CXL compliance | Models selected ordering, completion, and flow-control concepts; it is not a compliant CXL controller. |
+| UCIe compliance | Models adapter-layer message carriage and checksums; it does not implement PHY, link training, retry, or sideband. |
+| CDC scope | Single-bit controls use two-flop synchronizers; multi-bit packet movement uses async FIFOs. |
+| Credit model | Credits are local counters with return pulses; there is no external credit advertisement protocol. |
+
+# 11. Repository layout
 
 | Path | Role |
 |------|------|
