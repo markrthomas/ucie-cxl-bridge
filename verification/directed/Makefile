@@ -38,10 +38,11 @@ $(BUILD_DIR):
 
 # Verilator second-opinion lint (from repo root paths).
 lint:
-	cd .. && verilator -Isrc --lint-only -Wall -top-module cxl_ucie_bridge \
-		src/async_fifo.v src/credit_counter.v src/reset_drain.v src/cdc_sync.v src/cxl_ucie_bridge.v
-	cd .. && verilator -Isrc --lint-only -Wall -top-module async_fifo src/async_fifo.v
-	cd .. && verilator -Isrc --lint-only -Wall -top-module cdc_sync src/cdc_sync.v
+	cd ../.. && verilator -Isrc --lint-only -Wall -top-module cxl_ucie_bridge \
+		src/async_fifo.v src/credit_counter.v src/reset_drain.v src/cdc_sync.v src/reset_sync.v src/cxl_ucie_bridge.v
+	cd ../.. && verilator -Isrc --lint-only -Wall -top-module async_fifo src/async_fifo.v
+	cd ../.. && verilator -Isrc --lint-only -Wall -top-module cdc_sync src/cdc_sync.v
+	cd ../.. && verilator -Isrc --lint-only -Wall -top-module reset_sync src/reset_sync.v
 
 clean:
 	rm -rf $(BUILD_DIR)

@@ -9,7 +9,9 @@ module reset_sync #(
   output wire sync_rst_n
 );
 
+  /* verilator lint_off SYNCASYNCNET */
   reg [STAGES-1:0] sync_r;
+  /* verilator lint_on SYNCASYNCNET */
 
   always @(posedge clk or negedge async_rst_n) begin
     if (!async_rst_n)
