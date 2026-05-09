@@ -673,9 +673,9 @@ module tb_cxl_ucie_bridge;
     // After the ordering test all FIFOs are empty and the bridge is open (link_up=1, S_UP).
     begin : blk_link_up
       @(posedge clk);
-      link_up = 1'b0;   // S_UP will see !link_up on the next posedge → S_DRAIN, open=0
+      link_up = 1'b0;   // S_UP will see !link_up after sync delay (2 cycles)
+      repeat (4) @(posedge clk);
 
-      @(posedge clk);
       // Bridge is now in S_DRAIN, open=0.  Ingress must be stalled.
       cxl_in_valid = 1'b1;
       cxl_in_data  = pack_cxl_mem_rd(4'h0, 8'hdd, 16'h5000, 8'h04, 8'h50, 8'h00);
@@ -692,8 +692,8 @@ module tb_cxl_ucie_bridge;
         $finish(1);
       end
 
-      link_up = 1'b1;   // S_DOWN will see link_up=1 on the next posedge → S_UP, open=1
-      @(posedge clk);
+      link_up = 1'b1;   // S_DOWN will see link_up=1 after sync delay
+      repeat (4) @(posedge clk);
       // Bridge is open again.
 
       $display("PASS smoke link_up_gating");
@@ -710,6 +710,7 @@ module tb_cxl_ucie_bridge;
 
       @(posedge clk);
       err_inj_en     = 1'b1;
+      repeat (4) @(posedge clk); // wait for CDC
       cxl_in_data    = inj_pkt;
       cxl_in_valid   = 1'b1;
       ucie_out_ready = 1'b1;

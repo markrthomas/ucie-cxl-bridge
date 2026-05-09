@@ -12,7 +12,7 @@ module reset_drain (
   input  wire rst_n,
   input  wire link_up,
   input  wire all_empty,
-  output reg  open,
+  output wire open,
   output wire drain_done
 );
 
@@ -22,18 +22,18 @@ module reset_drain (
 
   reg [1:0] state;
 
-  assign drain_done = all_empty;
+  assign open       = (state == S_UP);
+  assign drain_done = (state == S_DOWN || state == S_DRAIN) && all_empty;
 
   always @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
       state <= S_DOWN;
-      open  <= 1'b0;
     end else begin
       case (state)
-        S_DOWN:  if ( link_up)   begin state <= S_UP;    open <= 1'b1; end
-        S_UP:    if (!link_up)   begin state <= S_DRAIN; open <= 1'b0; end
-        S_DRAIN: if ( all_empty)       state <= S_DOWN;
-        default:                       state <= S_DOWN;
+        S_DOWN:  if ( link_up)   state <= S_UP;
+        S_UP:    if (!link_up)   state <= S_DRAIN;
+        S_DRAIN: if ( all_empty) state <= S_DOWN;
+        default:                 state <= S_DOWN;
       endcase
     end
   end
@@ -43,13 +43,10 @@ module reset_drain (
 
   always_ff @(posedge clk) begin
     if (rst_n) begin
-      // open is asserted iff the FSM is in S_UP
-      if (state == S_UP) assert (open == 1'b1);
-      else               assert (open == 1'b0);
       // legal 2-bit encoding (S_DOWN=0, S_UP=1, S_DRAIN=2; 3 is unused)
       assert (state != 2'd3);
-      // drain_done tracks all_empty
-      assert (drain_done == all_empty);
+      // drain_done tracks (S_DOWN || S_DRAIN) && all_empty
+      assert (drain_done == ((state == S_DOWN || state == S_DRAIN) && all_empty));
       // reachability
       cover (state == S_UP);
       cover (state == S_DRAIN);

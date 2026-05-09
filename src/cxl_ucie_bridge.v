@@ -43,6 +43,28 @@ module cxl_ucie_bridge #(
     end
   endgenerate
 
+  // --- Reset synchronization ---
+  wire clk_rst_n;
+  wire ucie_rst_n;
+
+  reset_sync #(.STAGES(2)) u_clk_rst_sync (
+    .clk(clk), .async_rst_n(rst_n), .sync_rst_n(clk_rst_n)
+  );
+  reset_sync #(.STAGES(2)) u_ucie_rst_sync (
+    .clk(ucie_clk), .async_rst_n(rst_n), .sync_rst_n(ucie_rst_n)
+  );
+
+  // --- CDC for external control signals ---
+  wire link_up_clk;
+  wire err_inj_en_clk;
+
+  cdc_sync #(.STAGES(2)) u_link_up_cdc (
+    .clk(clk), .rst_n(clk_rst_n), .d(link_up), .q(link_up_clk)
+  );
+  cdc_sync #(.STAGES(2)) u_err_inj_cdc (
+    .clk(clk), .rst_n(clk_rst_n), .d(err_inj_en), .q(err_inj_en_clk)
+  );
+
   // --- Packet classification ---
   /* verilator lint_off UNUSEDSIGNAL */
   function automatic is_posted;
@@ -245,11 +267,11 @@ module cxl_ucie_bridge #(
   wire c2u_posted_r_empty_clk;
   wire c2u_np_r_empty_clk;
   cdc_sync #(.STAGES(2)) u_p_empty_cdc (
-    .clk  (clk), .rst_n(rst_n),
+    .clk  (clk), .rst_n(clk_rst_n),
     .d    (c2u_posted_r_empty), .q(c2u_posted_r_empty_clk)
   );
   cdc_sync #(.STAGES(2)) u_np_empty_cdc (
-    .clk  (clk), .rst_n(rst_n),
+    .clk  (clk), .rst_n(clk_rst_n),
     .d    (c2u_np_r_empty),    .q(c2u_np_r_empty_clk)
   );
 
@@ -259,8 +281,8 @@ module cxl_ucie_bridge #(
 
   reset_drain u_reset_drain (
     .clk       (clk),
-    .rst_n     (rst_n),
-    .link_up   (link_up),
+    .rst_n     (clk_rst_n),
+    .link_up   (link_up_clk),
     .all_empty (all_empty),
     .open      (bridge_open),
     .drain_done(drain_done)
@@ -269,13 +291,13 @@ module cxl_ucie_bridge #(
   // Synchronize bridge_open to ucie_clk domain
   wire bridge_open_ucie;
   cdc_sync #(.STAGES(2)) u_open_cdc (
-    .clk  (ucie_clk), .rst_n(rst_n),
+    .clk  (ucie_clk), .rst_n(ucie_rst_n),
     .d    (bridge_open), .q(bridge_open_ucie)
   );
 
   // Error injection (clk domain — affects CXL->UCIe write data)
   wire [WIDTH-1:0] c2u_wr_data_raw = translate_cxl_to_ucie(cxl_in_data);
-  wire [WIDTH-1:0] c2u_wr_data     = err_inj_en ?
+  wire [WIDTH-1:0] c2u_wr_data     = err_inj_en_clk ?
     {c2u_wr_data_raw[WIDTH-1:1], ~c2u_wr_data_raw[0]} : c2u_wr_data_raw;
 
   // UCIe->CXL translation (ucie_clk domain input)
@@ -303,8 +325,8 @@ module cxl_ucie_bridge #(
   wire arb_sel_now   = !c2u_posted_r_empty;
   wire arb_sel_final = arb_locked_r ? arb_sel_posted_r : arb_sel_now;
 
-  always @(posedge ucie_clk or negedge rst_n) begin
-    if (!rst_n) begin
+  always @(posedge ucie_clk or negedge ucie_rst_n) begin
+    if (!ucie_rst_n) begin
       arb_locked_r     <= 1'b0;
       arb_sel_posted_r <= 1'b0;
     end else begin
@@ -335,9 +357,9 @@ module cxl_ucie_bridge #(
     .WIDTH (WIDTH),
     .DEPTH (FIFO_DEPTH)
   ) u_c2u_posted (
-    .w_clk   (clk),           .w_rst_n(rst_n),
+    .w_clk   (clk),           .w_rst_n(clk_rst_n),
     .w_en    (c2u_posted_wr), .w_data (c2u_wr_data), .w_full (c2u_posted_w_full),
-    .r_clk   (ucie_clk),      .r_rst_n(rst_n),
+    .r_clk   (ucie_clk),      .r_rst_n(ucie_rst_n),
     .r_en    (c2u_posted_rd), .r_data (c2u_posted_rd_data), .r_empty(c2u_posted_r_empty)
   );
 
@@ -345,9 +367,9 @@ module cxl_ucie_bridge #(
     .WIDTH (WIDTH),
     .DEPTH (FIFO_DEPTH)
   ) u_c2u_np (
-    .w_clk   (clk),        .w_rst_n(rst_n),
+    .w_clk   (clk),        .w_rst_n(clk_rst_n),
     .w_en    (c2u_np_wr), .w_data (c2u_wr_data), .w_full (c2u_np_w_full),
-    .r_clk   (ucie_clk),   .r_rst_n(rst_n),
+    .r_clk   (ucie_clk),   .r_rst_n(ucie_rst_n),
     .r_en    (c2u_np_rd), .r_data (c2u_np_rd_data), .r_empty(c2u_np_r_empty)
   );
 
@@ -355,9 +377,9 @@ module cxl_ucie_bridge #(
     .WIDTH (WIDTH),
     .DEPTH (FIFO_DEPTH)
   ) u_u2c (
-    .w_clk   (ucie_clk), .w_rst_n(rst_n),
+    .w_clk   (ucie_clk), .w_rst_n(ucie_rst_n),
     .w_en    (u2c_wr),   .w_data (u2c_wr_data), .w_full (u2c_w_full),
-    .r_clk   (clk),      .r_rst_n(rst_n),
+    .r_clk   (clk),      .r_rst_n(clk_rst_n),
     .r_en    (u2c_rd),   .r_data (u2c_rd_data),  .r_empty(u2c_r_empty)
   );
 
@@ -415,7 +437,7 @@ module cxl_ucie_bridge #(
 
   // Phase 4: error injection correctness (combinational).
   always @(*) begin
-    if (err_inj_en) begin
+    if (err_inj_en_clk) begin
       assert (c2u_wr_data[0]         == ~c2u_wr_data_raw[0]);
       assert (c2u_wr_data[WIDTH-1:1] ==  c2u_wr_data_raw[WIDTH-1:1]);
     end else begin
@@ -435,7 +457,7 @@ module cxl_ucie_bridge #(
 
   // Arbiter correctness (ucie_clk domain).
   always_ff @(posedge ucie_clk) begin
-    if (rst_n) begin
+    if (ucie_rst_n) begin
       if (ucie_out_valid && ucie_out_ready) begin
         assert (c2u_posted_rd == arb_sel_final);
         assert (c2u_np_rd     == !arb_sel_final);
@@ -447,20 +469,20 @@ module cxl_ucie_bridge #(
 
   // Covers (clk domain).
   always_ff @(posedge clk) begin
-    if (rst_n) begin
+    if (clk_rst_n) begin
       cover (cxl_in_valid && cxl_in_data[PKT_KIND_MSB:PKT_KIND_LSB] == CXL_PKT_KIND_MEM_RD);
       cover (cxl_in_valid && cxl_in_data[PKT_KIND_MSB:PKT_KIND_LSB] == CXL_PKT_KIND_MEM_WR);
       cover (cxl_in_valid && cxl_in_data[PKT_KIND_MSB:PKT_KIND_LSB] == CXL_PKT_KIND_CACHE_RD);
       cover (cxl_in_valid && cxl_in_data[PKT_KIND_MSB:PKT_KIND_LSB] == CXL_PKT_KIND_CACHE_WR);
       cover (cxl_in_valid && !cxl_in_ready && !bridge_open);
-      cover (err_inj_en && c2u_np_wr);
+      cover (err_inj_en_clk && c2u_np_wr);
       cover (drain_done);
     end
   end
 
   // Covers (ucie_clk domain).
   always_ff @(posedge ucie_clk) begin
-    if (rst_n) begin
+    if (ucie_rst_n) begin
       cover (ucie_in_valid && ucie_in_data[PKT_KIND_MSB:PKT_KIND_LSB] == UCIE_PKT_KIND_MEM_CPL);
       cover (ucie_in_valid && ucie_in_data[PKT_KIND_MSB:PKT_KIND_LSB] == UCIE_PKT_KIND_CACHE_CPL);
       cover (c2u_posted_rd && !c2u_np_r_empty);

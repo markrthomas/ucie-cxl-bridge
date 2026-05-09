@@ -12,11 +12,16 @@ Optional Verilator lint (from `test/`): `make lint` (expects `verilator` on `PAT
 
 ## Formal verification
 
-Bounded **bmc** and **cover** for `sync_fifo` are defined in `formal/sync_fifo.sby`. The Yosys script uses a path **relative to each task’s `src/` directory** (`../../../src/sync_fifo.v`) so it resolves correctly under SymbiYosys (do not use `[files]` here with a `../src/...` path: `sby` can emit a `read_verilog` from that path while `cwd` is already `…/src`, which breaks). Locally you need **SymbiYosys** (`sby`) and solvers (for example via [OSS CAD Suite](https://github.com/YosysHQ/oss-cad-suite-build)):
+Bounded **bmc** and **cover** targets are defined for several modules in the `formal/` directory:
+- `sync_fifo.sby`: Basic synchronous FIFO safety and reachability.
+- `reset_drain.sby`: Link-state FSM state encoding and transitions.
+- `cxl_ucie_bridge.sby`: End-to-end bridge invariants including translation, routing, and link-gating.
+
+Locally you need **SymbiYosys** (`sby`) and solvers (for example via [OSS CAD Suite](https://github.com/YosysHQ/oss-cad-suite-build)):
 
 ```bash
 cd formal
-sby -f sync_fifo.sby
+sby -f cxl_ucie_bridge.sby
 ```
 
 **CI vs local:** GitHub Actions generates `formal/sync_fifo_ci.sby` from `sync_fifo.sby`, replacing the `read_verilog … ../../../src/sync_fifo.v` line with an **absolute** path under `$GITHUB_WORKSPACE`, so formal does not depend on `sby` task-directory depth on the runner.

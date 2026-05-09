@@ -36,21 +36,21 @@ At a high level, the bridge sits between:
 
 Internal blocks (to be elaborated in later revisions) may include buffering, translation tables, credit trackers, and optional reorder queues subject to specification rules.
 
-## 4.2 Current implementation (Phase 4 baseline)
+## 4.2 Current implementation (Phase 5 baseline)
 
-The repository contains a **Phase 4 RTL** that adds link-state gating, error injection, and a CDC synchronizer utility to the Phase 3 foundation of typed packet model, per-direction credit flow control, and posted/non-posted ordering domain split. The current scope is intentionally narrow relative to full CXL/UCIe compliance so semantics can be exercised and verified incrementally.
+The repository contains a **Phase 5 RTL** that features a **dual-clock asynchronous architecture**, separating the **CXL domain** (`clk`) from the **UCIe domain** (`ucie_clk`). It uses **asynchronous FIFOs** (`src/async_fifo.v`) for cross-domain buffering, robust **reset synchronization** (`src/reset_sync.v`), and **CDC synchronizers** (`src/cdc_sync.v`) for all external control signals (`link_up`, `err_inj_en`).
 
-The top RTL module is `cxl_ucie_bridge`. It parameterizes flit width (`WIDTH`, default 64 bits), FIFO depth (`FIFO_DEPTH`, default 8; must be a power of two), and initial credits per direction (`POSTED_CREDITS`, `NP_CREDITS`, `CPL_CREDITS`, all defaulting to `FIFO_DEPTH`). The translation layer assumes **64-bit packets** with shared field definitions in `src/cxl_ucie_bridge_defs.vh`.
+The top RTL module is `cxl_ucie_bridge`. It parameterizes flit width (`WIDTH`, default 64 bits) and FIFO depth (`FIFO_DEPTH`, default 8; must be a power of two). The translation layer assumes **64-bit packets** with shared field definitions in `src/cxl_ucie_bridge_defs.vh`.
 
-**CXL → UCIe path** uses two independent sync FIFOs:
-- `u_c2u_posted` — posted requests (`MEM_WR`, `CACHE_WR`), gated by `u_posted_crd` credit counter
-- `u_c2u_np` — non-posted requests (all other CXL kinds), gated by `u_np_crd` credit counter
+**CXL → UCIe path** uses two independent async FIFOs:
+- `u_c2u_posted` — posted requests (`MEM_WR`, `CACHE_WR`)
+- `u_c2u_np` — non-posted requests (all other CXL kinds)
 
-The egress arbiter selects between the two FIFOs using posted-priority arbitration. A registered lock (`arb_locked_r` / `arb_sel_posted_r`) freezes the selected FIFO for the duration of any stalled handshake, ensuring `ucie_out_data` remains stable while `ucie_out_valid` is asserted and `ucie_out_ready` is deasserted.
+The egress arbiter (running on `ucie_clk`) selects between the two FIFOs using posted-priority arbitration. A registered lock (`arb_locked_r` / `arb_sel_posted_r`) freezes the selected FIFO for the duration of any stalled handshake, ensuring `ucie_out_data` remains stable while `ucie_out_valid` is asserted and `ucie_out_ready` is deasserted.
 
-**UCIe → CXL path** uses a single sync FIFO (`u_u2c`) gated by `u_cpl_crd`.
+**UCIe → CXL path** uses a single async FIFO (`u_u2c`).
 
-Each direction uses a **valid/ready** interface with standard backpressure: upstream `ready` is asserted when the target FIFO is not full **and** credits are available; downstream sees `valid` when the output FIFO (or arbiter) has data.
+Each direction uses a **valid/ready** interface with standard backpressure: upstream `ready` is asserted when the target FIFO is not full; downstream sees `valid` when the output FIFO (or arbiter) has data.
 
 Unsupported packet kinds are not dropped; they are converted into an explicit error or invalid packet kind on the output side so the testbench and downstream logic can observe the mismatch.
 
@@ -63,11 +63,11 @@ Phase 1 froze a narrow first target (CXL.io request ↔ UCIe adapter completion)
 3. **Translation behavior:** field remap, opcode/kind preservation, CRC-8/CCITT checksum generation and verification (poly 0x07, init 0x00, over header bytes [63:8])
 4. **Remaining non-goals:** payload movement, retries, full CXL ordering compliance, and link bring-up
 
-## 4.5 Bring-up and non-ideal behavior (Phase 4)
+## 4.5 Bring-up and non-ideal behavior (Phase 4/5)
 
-Phase 4 adds a link-state readiness gate, a reset-drain FSM, an error injection interface, and a CDC synchronizer utility module.
+Phase 4/5 adds a link-state readiness gate, a reset-drain FSM, an error injection interface, and robust CDC/reset synchronization.
 
-**Reset-drain FSM (`src/reset_drain.v`):** A `reset_drain` module implements a three-state machine that gates the bridge open or closed based on an external `link_up` signal:
+**Reset-drain FSM (`src/reset_drain.v`):** A `reset_drain` module implements a three-state machine that gates the bridge open or closed based on a synchronized `link_up` signal:
 
 | State | Meaning | Transition |
 |-------|---------|------------|
@@ -75,11 +75,11 @@ Phase 4 adds a link-state readiness gate, a reset-drain FSM, an error injection 
 | `S_UP` | Bridge open; normal operation | → `S_DRAIN` when `link_up` deasserted |
 | `S_DRAIN` | Bridge closed; draining in-flight packets | → `S_DOWN` when all FIFOs empty |
 
-The bridge's `cxl_in_ready` and `ucie_in_ready` are gated by the FSM's `open` output, so de-asserting `link_up` immediately stops new traffic acceptance while existing FIFO contents drain normally via the egress path. The `drain_done` output (combinationally equal to `all_empty`) signals when it is safe to power-down or re-sequence the link.
+The bridge's `cxl_in_ready` and `ucie_in_ready` are gated by the FSM's `open` output (synchronized to each domain), so de-asserting `link_up` immediately stops new traffic acceptance while existing FIFO contents drain normally via the egress path. The `drain_done` output signals when it is safe to power-down or re-sequence the link.
 
-**Error injection interface:** The `err_inj_en` input allows a testbench or external agent to corrupt the next outgoing CXL→UCIe packet. When `err_inj_en` is asserted, bit 0 of the translated packet's checksum byte is flipped before the packet enters the FIFO. This exercises downstream error-handling paths without requiring separate error-generating stimulus.
+**Error injection interface:** The `err_inj_en` input allows a testbench or external agent to corrupt the next outgoing CXL→UCIe packet. This signal is synchronized to the `clk` domain. When `err_inj_en_clk` is asserted, bit 0 of the translated packet's checksum byte is flipped before the packet enters the FIFO.
 
-**CDC synchronizer (`src/cdc_sync.v`):** A standalone `cdc_sync` module provides a parameterized N-stage flip-flop chain for crossing single-bit signals between asynchronous clock domains (default 2 stages). The bridge itself remains single-clock; `cdc_sync` is provided as a building block for future multi-clock integration (see §9).
+**Reset synchronization:** Standalone `reset_sync` modules provide asynchronous assertion and synchronous deassertion of reset for both the `clk` and `ucie_clk` domains, ensuring clean initialization and startup.
 
 ## 4.4 Flow control and ordering (Phase 3)
 
@@ -169,6 +169,7 @@ Work is expected to proceed roughly in the following order; later phases depend 
 2. **Broaden typed traffic (done ✓)** — Full CXL.io / CXL.mem / CXL.cache packet taxonomy, matching UCIe adapter message families, expanded scoreboarding and formal assertions, GTKWave save file.
 3. **Flow control and ordering (done ✓)** — Per-direction credit counters, posted/non-posted ordering domain split, posted-priority egress arbiter, ordering directed test, credit-exhaustion formal covers.
 4. **Bring-up and non-ideal behavior (done ✓)** — `reset_drain` link-state FSM, `link_up` readiness gate, `err_inj_en` error injection interface, `cdc_sync` CDC synchronizer utility.
+5. **Dual-clock asynchronous architecture (done ✓)** — Separated `clk` and `ucie_clk` domains, `async_fifo` integration, `reset_sync` reset synchronization, robust CDC for all control signals, refined `drain_done` and link-state FSM logic.
 
 # 9. Future work (detail)
 
