@@ -39,8 +39,22 @@ localparam [3:0] UCIE_MSG_CFG           = 4'h1;
 localparam [3:0] UCIE_MSG_MEM           = 4'h2;
 localparam [3:0] UCIE_MSG_MEM_RD        = 4'h3;
 localparam [3:0] UCIE_MSG_MEM_WR        = 4'h4;
-localparam [3:0] UCIE_MSG_CACHE_RD      = 4'h5;
-localparam [3:0] UCIE_MSG_CACHE_WR      = 4'h6;
+localparam [3:0] UCIE_MSG_MEM_RD_DATA   = 4'h5;
+localparam [3:0] UCIE_MSG_MEM_WR_DATA   = 4'h6;
+localparam [3:0] UCIE_MSG_CACHE_RD      = 4'h7;
+localparam [3:0] UCIE_MSG_CACHE_WR      = 4'h8;
+localparam [3:0] UCIE_MSG_CACHE_RD_DATA = 4'h9;
+localparam [3:0] UCIE_MSG_CACHE_WR_DATA = 4'ha;
+
+// ---- CXL Opcodes (PKT_CODE field for MEM/CACHE) ----
+localparam [3:0] CXL_MEM_OP_RD          = 4'h0;
+localparam [3:0] CXL_MEM_OP_WR          = 4'h1;
+localparam [3:0] CXL_MEM_OP_RD_DATA     = 4'h2;
+localparam [3:0] CXL_MEM_OP_WR_DATA     = 4'h3;
+localparam [3:0] CXL_CACHE_OP_RD        = 4'h0;
+localparam [3:0] CXL_CACHE_OP_WR        = 4'h1;
+localparam [3:0] CXL_CACHE_OP_RD_DATA   = 4'h2;
+localparam [3:0] CXL_CACHE_OP_WR_DATA   = 4'h3;
 
 // ---- UCIe completion status (PKT_CODE field of *_CPL) ----
 localparam [3:0] UCIE_CPL_SC            = 4'h1;

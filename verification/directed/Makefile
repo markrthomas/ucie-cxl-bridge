@@ -6,7 +6,7 @@ BUILD_DIR := build
 SRC_DIR   := ../../src
 VCD       := $(BUILD_DIR)/waves.vcd
 
-SOURCES := $(SRC_DIR)/async_fifo.v $(SRC_DIR)/credit_counter.v $(SRC_DIR)/reset_drain.v $(SRC_DIR)/cdc_sync.v $(SRC_DIR)/reset_sync.v $(SRC_DIR)/cxl_ucie_bridge.v $(SRC_DIR)/cxl_ucie_bridge_chk.v $(SRC_DIR)/tb_cxl_ucie_bridge.v
+SOURCES := $(SRC_DIR)/async_fifo.v $(SRC_DIR)/credit_counter.v $(SRC_DIR)/credit_pulse_sync.v $(SRC_DIR)/reset_drain.v $(SRC_DIR)/cdc_sync.v $(SRC_DIR)/reset_sync.v $(SRC_DIR)/cxl_ucie_bridge.v $(SRC_DIR)/cxl_ucie_bridge_chk.v $(SRC_DIR)/tb_cxl_ucie_bridge.v
 OUT     := $(BUILD_DIR)/tb.out
 
 .PHONY: all run sim compile stress vcd gtkwave lint clean
@@ -39,10 +39,11 @@ $(BUILD_DIR):
 # Verilator second-opinion lint (from repo root paths).
 lint:
 	cd ../.. && verilator -Isrc --lint-only -Wall -top-module cxl_ucie_bridge \
-		src/async_fifo.v src/credit_counter.v src/reset_drain.v src/cdc_sync.v src/reset_sync.v src/cxl_ucie_bridge.v
+		src/async_fifo.v src/credit_counter.v src/credit_pulse_sync.v src/reset_drain.v src/cdc_sync.v src/reset_sync.v src/cxl_ucie_bridge.v
 	cd ../.. && verilator -Isrc --lint-only -Wall -top-module async_fifo src/async_fifo.v
 	cd ../.. && verilator -Isrc --lint-only -Wall -top-module cdc_sync src/cdc_sync.v
 	cd ../.. && verilator -Isrc --lint-only -Wall -top-module reset_sync src/reset_sync.v
+	cd ../.. && verilator -Isrc --lint-only -Wall -top-module credit_pulse_sync src/credit_pulse_sync.v
 
 clean:
 	rm -rf $(BUILD_DIR)

@@ -17,11 +17,15 @@ smtbmc
 bmc: read_verilog -sv -DFORMAL -I../../../../src ../../../../src/async_fifo.v
 bmc: read_verilog -sv -DFORMAL -I../../../../src ../../../../src/cdc_sync.v
 bmc: read_verilog -sv -DFORMAL -I../../../../src ../../../../src/reset_sync.v
+bmc: read_verilog -sv -DFORMAL -I../../../../src ../../../../src/credit_counter.v
+bmc: read_verilog -sv -DFORMAL -I../../../../src ../../../../src/credit_pulse_sync.v
 bmc: read_verilog -sv -DFORMAL -I../../../../src ../../../../src/reset_drain.v
 bmc: read_verilog -sv -DFORMAL -I../../../../src ../../../../src/cxl_ucie_bridge.v
 cover: read_verilog -sv -DFORMAL -I../../../../src ../../../../src/async_fifo.v
 cover: read_verilog -sv -DFORMAL -I../../../../src ../../../../src/cdc_sync.v
 cover: read_verilog -sv -DFORMAL -I../../../../src ../../../../src/reset_sync.v
+cover: read_verilog -sv -DFORMAL -I../../../../src ../../../../src/credit_counter.v
+cover: read_verilog -sv -DFORMAL -I../../../../src ../../../../src/credit_pulse_sync.v
 cover: read_verilog -sv -DFORMAL -I../../../../src ../../../../src/reset_drain.v
 cover: read_verilog -sv -DFORMAL -I../../../../src ../../../../src/cxl_ucie_bridge.v
 prep -top cxl_ucie_bridge

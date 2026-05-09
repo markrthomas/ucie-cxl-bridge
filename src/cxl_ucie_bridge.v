@@ -12,7 +12,10 @@
 
 module cxl_ucie_bridge #(
   parameter integer WIDTH      = 64,
-  parameter integer FIFO_DEPTH = 8
+  parameter integer FIFO_DEPTH = 8,
+  parameter integer POSTED_CREDITS = 8,
+  parameter integer NP_CREDITS     = 8,
+  parameter integer CPL_CREDITS    = 8
 ) (
   input  wire                  clk,
   input  wire                  ucie_clk,    // UCIe domain clock
@@ -108,7 +111,8 @@ module cxl_ucie_bridge #(
           attr = cxl_pkt[PKT_AUX_MSB:PKT_AUX_LSB] ^
                  cxl_pkt[PKT_MISC_MSB:PKT_MISC_LSB];
           raw_pkt = pack_ucie_ad_req(
-            UCIE_MSG_MEM_RD,
+            (cxl_pkt[PKT_CODE_MSB:PKT_CODE_LSB] == CXL_MEM_OP_RD_DATA) ?
+              UCIE_MSG_MEM_RD_DATA : UCIE_MSG_MEM_RD,
             cxl_pkt[PKT_TAG_MSB:PKT_TAG_LSB],
             cxl_pkt[PKT_ADDR_MSB:PKT_ADDR_LSB],
             cxl_pkt[PKT_LEN_MSB:PKT_LEN_LSB],
@@ -123,7 +127,8 @@ module cxl_ucie_bridge #(
           attr = cxl_pkt[PKT_AUX_MSB:PKT_AUX_LSB] ^
                  cxl_pkt[PKT_MISC_MSB:PKT_MISC_LSB];
           raw_pkt = pack_ucie_ad_req(
-            UCIE_MSG_MEM_WR,
+            (cxl_pkt[PKT_CODE_MSB:PKT_CODE_LSB] == CXL_MEM_OP_WR_DATA) ?
+              UCIE_MSG_MEM_WR_DATA : UCIE_MSG_MEM_WR,
             cxl_pkt[PKT_TAG_MSB:PKT_TAG_LSB],
             cxl_pkt[PKT_ADDR_MSB:PKT_ADDR_LSB],
             cxl_pkt[PKT_LEN_MSB:PKT_LEN_LSB],
@@ -138,7 +143,8 @@ module cxl_ucie_bridge #(
           attr = cxl_pkt[PKT_AUX_MSB:PKT_AUX_LSB] ^
                  cxl_pkt[PKT_MISC_MSB:PKT_MISC_LSB];
           raw_pkt = pack_ucie_ad_req(
-            UCIE_MSG_CACHE_RD,
+            (cxl_pkt[PKT_CODE_MSB:PKT_CODE_LSB] == CXL_CACHE_OP_RD_DATA) ?
+              UCIE_MSG_CACHE_RD_DATA : UCIE_MSG_CACHE_RD,
             cxl_pkt[PKT_TAG_MSB:PKT_TAG_LSB],
             cxl_pkt[PKT_ADDR_MSB:PKT_ADDR_LSB],
             cxl_pkt[PKT_LEN_MSB:PKT_LEN_LSB],
@@ -153,7 +159,8 @@ module cxl_ucie_bridge #(
           attr = cxl_pkt[PKT_AUX_MSB:PKT_AUX_LSB] ^
                  cxl_pkt[PKT_MISC_MSB:PKT_MISC_LSB];
           raw_pkt = pack_ucie_ad_req(
-            UCIE_MSG_CACHE_WR,
+            (cxl_pkt[PKT_CODE_MSB:PKT_CODE_LSB] == CXL_CACHE_OP_WR_DATA) ?
+              UCIE_MSG_CACHE_WR_DATA : UCIE_MSG_CACHE_WR,
             cxl_pkt[PKT_TAG_MSB:PKT_TAG_LSB],
             cxl_pkt[PKT_ADDR_MSB:PKT_ADDR_LSB],
             cxl_pkt[PKT_LEN_MSB:PKT_LEN_LSB],
@@ -306,11 +313,15 @@ module cxl_ucie_bridge #(
   wire cxl_in_is_posted_w = is_posted(cxl_in_data);
 
   // --- CXL domain ingress gating (clk) ---
+  wire posted_crd_avail;
+  wire np_crd_avail;
   assign cxl_in_ready  = bridge_open && (cxl_in_is_posted_w ?
-                         !c2u_posted_w_full : !c2u_np_w_full);
+                         (!c2u_posted_w_full && posted_crd_avail) :
+                         (!c2u_np_w_full     && np_crd_avail));
 
   // --- UCIe domain ingress gating (ucie_clk) ---
-  assign ucie_in_ready = bridge_open_ucie && !u2c_w_full;
+  wire cpl_crd_avail;
+  assign ucie_in_ready = bridge_open_ucie && (!u2c_w_full && cpl_crd_avail);
 
   // --- CXL domain egress (clk) ---
   assign cxl_out_valid = !u2c_r_empty;
@@ -351,6 +362,38 @@ module cxl_ucie_bridge #(
   wire u2c_wr        = ucie_in_valid && ucie_in_ready;
   wire u2c_rd        = cxl_out_ready && cxl_out_valid;
 
+  // --- Credit counters and pulse syncs ---
+
+  wire posted_ret_clk;
+  credit_pulse_sync u_posted_ret_sync (
+    .src_clk(ucie_clk), .src_rst_n(ucie_rst_n), .src_pulse(c2u_posted_rd),
+    .dst_clk(clk),      .dst_rst_n(clk_rst_n),   .dst_pulse(posted_ret_clk)
+  );
+  credit_counter #(.CREDITS(POSTED_CREDITS)) u_posted_crd (
+    .clk(clk), .rst_n(clk_rst_n), .consume(c2u_posted_wr), .ret(posted_ret_clk),
+    .available(posted_crd_avail)
+  );
+
+  wire np_ret_clk;
+  credit_pulse_sync u_np_ret_sync (
+    .src_clk(ucie_clk), .src_rst_n(ucie_rst_n), .src_pulse(c2u_np_rd),
+    .dst_clk(clk),      .dst_rst_n(clk_rst_n),   .dst_pulse(np_ret_clk)
+  );
+  credit_counter #(.CREDITS(NP_CREDITS)) u_np_crd (
+    .clk(clk), .rst_n(clk_rst_n), .consume(c2u_np_wr), .ret(np_ret_clk),
+    .available(np_crd_avail)
+  );
+
+  wire cpl_ret_ucie;
+  credit_pulse_sync u_cpl_ret_sync (
+    .src_clk(clk),      .src_rst_n(clk_rst_n),   .src_pulse(u2c_rd),
+    .dst_clk(ucie_clk), .dst_rst_n(ucie_rst_n), .dst_pulse(cpl_ret_ucie)
+  );
+  credit_counter #(.CREDITS(CPL_CREDITS)) u_cpl_crd (
+    .clk(ucie_clk), .rst_n(ucie_rst_n), .consume(u2c_wr), .ret(cpl_ret_ucie),
+    .available(cpl_crd_avail)
+  );
+
   // --- Async FIFOs ---
 
   async_fifo #(
@@ -388,6 +431,21 @@ module cxl_ucie_bridge #(
   wire [63:0] f_u2c_chk_zero = {ucie_in_data[63:8], 8'h00};
   wire        f_u2c_cs_ok    = (ucie_in_data[7:0] == bridge_checksum(f_u2c_chk_zero));
 
+  // Credits formal (clk domain)
+  always @(*) begin
+    if (clk_rst_n) begin
+      if (c2u_posted_wr) assert (posted_crd_avail);
+      if (c2u_np_wr)     assert (np_crd_avail);
+    end
+  end
+
+  // Credits formal (ucie_clk domain)
+  always @(*) begin
+    if (ucie_rst_n) begin
+      if (u2c_wr) assert (cpl_crd_avail);
+    end
+  end
+
   // Translation kind preservation (combinational, clock-agnostic).
   always @(*) begin
     if (cxl_in_data[PKT_KIND_MSB:PKT_KIND_LSB] == CXL_PKT_KIND_IO_REQ ||
@@ -399,14 +457,30 @@ module cxl_ucie_bridge #(
     else
       assert (c2u_wr_data[PKT_KIND_MSB:PKT_KIND_LSB] == UCIE_PKT_KIND_ERROR);
 
-    if (cxl_in_data[PKT_KIND_MSB:PKT_KIND_LSB] == CXL_PKT_KIND_MEM_RD)
-      assert (c2u_wr_data[PKT_CODE_MSB:PKT_CODE_LSB] == UCIE_MSG_MEM_RD);
-    if (cxl_in_data[PKT_KIND_MSB:PKT_KIND_LSB] == CXL_PKT_KIND_MEM_WR)
-      assert (c2u_wr_data[PKT_CODE_MSB:PKT_CODE_LSB] == UCIE_MSG_MEM_WR);
-    if (cxl_in_data[PKT_KIND_MSB:PKT_KIND_LSB] == CXL_PKT_KIND_CACHE_RD)
-      assert (c2u_wr_data[PKT_CODE_MSB:PKT_CODE_LSB] == UCIE_MSG_CACHE_RD);
-    if (cxl_in_data[PKT_KIND_MSB:PKT_KIND_LSB] == CXL_PKT_KIND_CACHE_WR)
-      assert (c2u_wr_data[PKT_CODE_MSB:PKT_CODE_LSB] == UCIE_MSG_CACHE_WR);
+    if (cxl_in_data[PKT_KIND_MSB:PKT_KIND_LSB] == CXL_PKT_KIND_MEM_RD) begin
+      if (cxl_in_data[PKT_CODE_MSB:PKT_CODE_LSB] == CXL_MEM_OP_RD_DATA)
+        assert (c2u_wr_data[PKT_CODE_MSB:PKT_CODE_LSB] == UCIE_MSG_MEM_RD_DATA);
+      else
+        assert (c2u_wr_data[PKT_CODE_MSB:PKT_CODE_LSB] == UCIE_MSG_MEM_RD);
+    end
+    if (cxl_in_data[PKT_KIND_MSB:PKT_KIND_LSB] == CXL_PKT_KIND_MEM_WR) begin
+      if (cxl_in_data[PKT_CODE_MSB:PKT_CODE_LSB] == CXL_MEM_OP_WR_DATA)
+        assert (c2u_wr_data[PKT_CODE_MSB:PKT_CODE_LSB] == UCIE_MSG_MEM_WR_DATA);
+      else
+        assert (c2u_wr_data[PKT_CODE_MSB:PKT_CODE_LSB] == UCIE_MSG_MEM_WR);
+    end
+    if (cxl_in_data[PKT_KIND_MSB:PKT_KIND_LSB] == CXL_PKT_KIND_CACHE_RD) begin
+      if (cxl_in_data[PKT_CODE_MSB:PKT_CODE_LSB] == CXL_CACHE_OP_RD_DATA)
+        assert (c2u_wr_data[PKT_CODE_MSB:PKT_CODE_LSB] == UCIE_MSG_CACHE_RD_DATA);
+      else
+        assert (c2u_wr_data[PKT_CODE_MSB:PKT_CODE_LSB] == UCIE_MSG_CACHE_RD);
+    end
+    if (cxl_in_data[PKT_KIND_MSB:PKT_KIND_LSB] == CXL_PKT_KIND_CACHE_WR) begin
+      if (cxl_in_data[PKT_CODE_MSB:PKT_CODE_LSB] == CXL_CACHE_OP_WR_DATA)
+        assert (c2u_wr_data[PKT_CODE_MSB:PKT_CODE_LSB] == UCIE_MSG_CACHE_WR_DATA);
+      else
+        assert (c2u_wr_data[PKT_CODE_MSB:PKT_CODE_LSB] == UCIE_MSG_CACHE_WR);
+    end
 
     if (ucie_in_data[PKT_KIND_MSB:PKT_KIND_LSB] == UCIE_PKT_KIND_AD_CPL && f_u2c_cs_ok)
       assert (u2c_wr_data[PKT_KIND_MSB:PKT_KIND_LSB] == CXL_PKT_KIND_IO_CPL);
@@ -475,6 +549,7 @@ module cxl_ucie_bridge #(
       cover (cxl_in_valid && cxl_in_data[PKT_KIND_MSB:PKT_KIND_LSB] == CXL_PKT_KIND_CACHE_RD);
       cover (cxl_in_valid && cxl_in_data[PKT_KIND_MSB:PKT_KIND_LSB] == CXL_PKT_KIND_CACHE_WR);
       cover (cxl_in_valid && !cxl_in_ready && !bridge_open);
+      cover (cxl_in_valid && !cxl_in_ready && bridge_open && !posted_crd_avail);
       cover (err_inj_en_clk && c2u_np_wr);
       cover (drain_done);
     end
@@ -483,6 +558,7 @@ module cxl_ucie_bridge #(
   // Covers (ucie_clk domain).
   always_ff @(posedge ucie_clk) begin
     if (ucie_rst_n) begin
+      cover (ucie_in_valid && !ucie_in_ready && bridge_open_ucie && !cpl_crd_avail);
       cover (ucie_in_valid && ucie_in_data[PKT_KIND_MSB:PKT_KIND_LSB] == UCIE_PKT_KIND_MEM_CPL);
       cover (ucie_in_valid && ucie_in_data[PKT_KIND_MSB:PKT_KIND_LSB] == UCIE_PKT_KIND_CACHE_CPL);
       cover (c2u_posted_rd && !c2u_np_r_empty);

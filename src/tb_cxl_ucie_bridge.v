@@ -176,7 +176,8 @@ module tb_cxl_ucie_bridge;
           attr = cxl_pkt[PKT_AUX_MSB:PKT_AUX_LSB] ^
                  cxl_pkt[PKT_MISC_MSB:PKT_MISC_LSB];
           raw_pkt = pack_ucie_ad_req(
-            UCIE_MSG_MEM_RD,
+            (cxl_pkt[PKT_CODE_MSB:PKT_CODE_LSB] == CXL_MEM_OP_RD_DATA) ?
+              UCIE_MSG_MEM_RD_DATA : UCIE_MSG_MEM_RD,
             cxl_pkt[PKT_TAG_MSB:PKT_TAG_LSB],
             cxl_pkt[PKT_ADDR_MSB:PKT_ADDR_LSB],
             cxl_pkt[PKT_LEN_MSB:PKT_LEN_LSB],
@@ -191,7 +192,8 @@ module tb_cxl_ucie_bridge;
           attr = cxl_pkt[PKT_AUX_MSB:PKT_AUX_LSB] ^
                  cxl_pkt[PKT_MISC_MSB:PKT_MISC_LSB];
           raw_pkt = pack_ucie_ad_req(
-            UCIE_MSG_MEM_WR,
+            (cxl_pkt[PKT_CODE_MSB:PKT_CODE_LSB] == CXL_MEM_OP_WR_DATA) ?
+              UCIE_MSG_MEM_WR_DATA : UCIE_MSG_MEM_WR,
             cxl_pkt[PKT_TAG_MSB:PKT_TAG_LSB],
             cxl_pkt[PKT_ADDR_MSB:PKT_ADDR_LSB],
             cxl_pkt[PKT_LEN_MSB:PKT_LEN_LSB],
@@ -206,7 +208,8 @@ module tb_cxl_ucie_bridge;
           attr = cxl_pkt[PKT_AUX_MSB:PKT_AUX_LSB] ^
                  cxl_pkt[PKT_MISC_MSB:PKT_MISC_LSB];
           raw_pkt = pack_ucie_ad_req(
-            UCIE_MSG_CACHE_RD,
+            (cxl_pkt[PKT_CODE_MSB:PKT_CODE_LSB] == CXL_CACHE_OP_RD_DATA) ?
+              UCIE_MSG_CACHE_RD_DATA : UCIE_MSG_CACHE_RD,
             cxl_pkt[PKT_TAG_MSB:PKT_TAG_LSB],
             cxl_pkt[PKT_ADDR_MSB:PKT_ADDR_LSB],
             cxl_pkt[PKT_LEN_MSB:PKT_LEN_LSB],
@@ -221,7 +224,8 @@ module tb_cxl_ucie_bridge;
           attr = cxl_pkt[PKT_AUX_MSB:PKT_AUX_LSB] ^
                  cxl_pkt[PKT_MISC_MSB:PKT_MISC_LSB];
           raw_pkt = pack_ucie_ad_req(
-            UCIE_MSG_CACHE_WR,
+            (cxl_pkt[PKT_CODE_MSB:PKT_CODE_LSB] == CXL_CACHE_OP_WR_DATA) ?
+              UCIE_MSG_CACHE_WR_DATA : UCIE_MSG_CACHE_WR,
             cxl_pkt[PKT_TAG_MSB:PKT_TAG_LSB],
             cxl_pkt[PKT_ADDR_MSB:PKT_ADDR_LSB],
             cxl_pkt[PKT_LEN_MSB:PKT_LEN_LSB],
@@ -697,6 +701,70 @@ module tb_cxl_ucie_bridge;
       // Bridge is open again.
 
       $display("PASS smoke link_up_gating");
+    end
+
+    // --- Smoke 4.5: granular protocol opcodes ---
+    begin : blk_granular_ops
+      reg [W-1:0] test_pkt;
+      reg [W-1:0] exp_pkt;
+
+      @(posedge clk);
+      // MEM_RD_DATA
+      test_pkt = pack_cxl_mem_rd(CXL_MEM_OP_RD_DATA, 8'hD1, 16'h7000, 8'h04, 8'h71, 8'h00);
+      exp_pkt  = expect_ucie_from_cxl(test_pkt);
+      cxl_in_data = test_pkt; cxl_in_valid = 1'b1; ucie_out_ready = 1'b1;
+      @(posedge clk); while (!(cxl_in_valid && cxl_in_ready)) @(posedge clk);
+      cxl_in_valid = 1'b0;
+      wait (ucie_out_valid);
+      if (ucie_out_data !== exp_pkt) begin
+        $display("FAIL: granular MEM_RD_DATA exp=%h got=%h", exp_pkt, ucie_out_data);
+        $finish(1);
+      end
+      @(posedge ucie_clk); #1;
+
+      // MEM_WR_DATA
+      @(posedge clk);
+      test_pkt = pack_cxl_mem_wr(CXL_MEM_OP_WR_DATA, 8'hD2, 16'h8000, 8'h04, 8'h72, 8'h00);
+      exp_pkt  = expect_ucie_from_cxl(test_pkt);
+      cxl_in_data = test_pkt; cxl_in_valid = 1'b1;
+      @(posedge clk); while (!(cxl_in_valid && cxl_in_ready)) @(posedge clk);
+      cxl_in_valid = 1'b0;
+      wait (ucie_out_valid);
+      if (ucie_out_data !== exp_pkt) begin
+        $display("FAIL: granular MEM_WR_DATA exp=%h got=%h", exp_pkt, ucie_out_data);
+        $finish(1);
+      end
+      @(posedge ucie_clk); #1;
+
+      // CACHE_RD_DATA
+      @(posedge clk);
+      test_pkt = pack_cxl_cache_rd(CXL_CACHE_OP_RD_DATA, 8'hD3, 16'h9000, 8'h04, 8'h73, 8'h00);
+      exp_pkt  = expect_ucie_from_cxl(test_pkt);
+      cxl_in_data = test_pkt; cxl_in_valid = 1'b1;
+      @(posedge clk); while (!(cxl_in_valid && cxl_in_ready)) @(posedge clk);
+      cxl_in_valid = 1'b0;
+      wait (ucie_out_valid);
+      if (ucie_out_data !== exp_pkt) begin
+        $display("FAIL: granular CACHE_RD_DATA exp=%h got=%h", exp_pkt, ucie_out_data);
+        $finish(1);
+      end
+      @(posedge ucie_clk); #1;
+
+      // CACHE_WR_DATA
+      @(posedge clk);
+      test_pkt = pack_cxl_cache_wr(CXL_CACHE_OP_WR_DATA, 8'hD4, 16'hA000, 8'h04, 8'h74, 8'h00);
+      exp_pkt  = expect_ucie_from_cxl(test_pkt);
+      cxl_in_data = test_pkt; cxl_in_valid = 1'b1;
+      @(posedge clk); while (!(cxl_in_valid && cxl_in_ready)) @(posedge clk);
+      cxl_in_valid = 1'b0;
+      wait (ucie_out_valid);
+      if (ucie_out_data !== exp_pkt) begin
+        $display("FAIL: granular CACHE_WR_DATA exp=%h got=%h", exp_pkt, ucie_out_data);
+        $finish(1);
+      end
+      @(posedge ucie_clk); #1;
+
+      $display("PASS smoke granular_opcodes");
     end
 
     // --- Smoke 5: error injection ---
