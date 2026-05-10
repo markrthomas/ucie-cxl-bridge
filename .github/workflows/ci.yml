@@ -35,7 +35,7 @@ jobs:
       - name: Install tools
         run: |
           sudo apt-get update && sudo apt-get install -y iverilog
-          pip install cocotb
+          pip install cocotb==1.8.1
 
       - name: cocotb OSS UVM-equivalent tests (CXL/UCIe bridge)
         run: make cocotb
