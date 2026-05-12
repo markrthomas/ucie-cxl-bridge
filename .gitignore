@@ -5,6 +5,10 @@ verification/cocotb/sim_build/
 verification/cocotb/__pycache__/
 verification/cocotb/**/*.pyc
 verification/cocotb/results.xml
+
+# Verilator coverage build artifacts
+sim/obj_dir_cov/
+sim/coverage.info
 doc/build/
 
 # SymbiYosys (Formal verification workdirs)

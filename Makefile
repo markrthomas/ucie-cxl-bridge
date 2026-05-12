@@ -4,6 +4,17 @@
 
 SBY ?= sby
 
+VERILATOR ?= verilator
+VERILATOR_ROOT := $(shell v=$$(command -v verilator 2>/dev/null); [ -n "$$v" ] && realpath "$$(dirname "$$v")/../share/verilator")
+VERILATOR_INC  := $(VERILATOR_ROOT)/include
+VERILATOR_CPP  := $(VERILATOR_INC)/verilated.cpp $(VERILATOR_INC)/verilated_cov.cpp \
+                  $(VERILATOR_INC)/verilated_threads.cpp
+
+BRIDGE_SRCS := src/async_fifo.v src/cdc_sync.v src/credit_counter.v \
+               src/credit_pulse_sync.v src/reset_drain.v src/reset_sync.v \
+               src/cxl_ucie_bridge.v
+COV_DIR := sim/obj_dir_cov
+
 .PHONY: help lint sim regress stress coverage formal ci cocotb clean
 
 help:
@@ -39,12 +50,24 @@ stress:
 regress: lint sim
 	@echo "[REGRESS] lint + directed sim PASSED"
 
-# Verilator C++ coverage wrapper not yet written.
-# See doc/PLAN.md Phase 7 and DV_STANDARDS.md in the workspace root.
+# coverage: Verilator --coverage build + run; emits sim/coverage.info (lcov format).
 coverage:
-	@echo "[COVERAGE] Verilator C++ wrapper not yet written for this repo."
-	@echo "           Add a sim_main.cpp targeting cxl_ucie_bridge to enable --coverage."
-	@echo "           See doc/PLAN.md and DV_STANDARDS.md in the workspace root."
+	@command -v $(VERILATOR) >/dev/null 2>&1 || { echo "[COVERAGE] verilator not on PATH; skipping"; exit 0; }
+	rm -rf $(COV_DIR)
+	$(VERILATOR) --coverage -cc $(BRIDGE_SRCS) --top-module cxl_ucie_bridge \
+		--Mdir $(COV_DIR) -Isrc -Wno-DECLFILENAME -Wno-WIDTH -Wno-fatal
+	$(MAKE) -C $(COV_DIR) -f Vcxl_ucie_bridge.mk
+	g++ -DVM_COVERAGE=1 -o $(COV_DIR)/sim_cov \
+		sim/sim_main.cpp $(COV_DIR)/Vcxl_ucie_bridge__ALL.a \
+		-I$(COV_DIR) -I$(VERILATOR_INC) -I$(VERILATOR_INC)/vltstd \
+		$(VERILATOR_CPP) -pthread -lm
+	cd $(COV_DIR) && ./sim_cov
+	@if command -v verilator_coverage >/dev/null 2>&1; then \
+		verilator_coverage --write-info ../coverage.info $(COV_DIR)/coverage.dat; \
+		echo "[COVERAGE] sim/coverage.info written"; \
+	else \
+		echo "[COVERAGE] coverage.dat in $(COV_DIR) (install verilator for lcov export)"; \
+	fi
 
 # SymbiYosys formal verification (requires OSS CAD Suite or standalone sby).
 formal:
@@ -59,3 +82,4 @@ cocotb:
 
 clean:
 	$(MAKE) -C verification/directed clean
+	rm -rf $(COV_DIR) sim/coverage.info
