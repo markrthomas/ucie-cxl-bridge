@@ -38,10 +38,12 @@ graph TD
 ## Key Components
 
 ### 1. Scoreboard (`bridge_scoreboard`)
-The scoreboard is currently a skeleton for end-to-end checks across the clock boundary.
-- **Current behavior**: Captures CXL-side and UCIe-side monitor items and stores expected C2U/U2C items in simple queues.
-- **Next step**: Replace the placeholder queue model with translation-aware prediction that mirrors `cxl_ucie_bridge_defs.vh`.
-- **Flow-control goal**: Add credit-exhaustion and no-overrun checks once the prediction model is complete.
+The scoreboard performs protocol-accurate, end-to-end checks across the clock boundary.
+- **Prediction**: `env/bridge_predict.sv` mirrors the RTL translation, CRC-8 checksum, and payload-length logic (a package-local copy of `cxl_ucie_bridge_defs.vh` — the DUT's include guard would otherwise skip the header inside the package). Each accepted CXL request predicts its UCIe egress flit and vice-versa.
+- **Ordering**: C2U predictions are held in per-class (posted / non-posted) queues and matched by the class of the emerging flit, so the reordering egress arbiter is handled correctly. U2C is a single in-order queue.
+- **Payload (Phase 7)**: header/payload beats are classified by mirror counters that decode the same length fields as the RTL; write payload beats are content-checked in order per class.
+- **Verdict**: `check_phase` flags any unmatched prediction/payload left at end of test; `report_phase` prints checked counts and PASS/FAIL.
+- **Flow-control goal**: add credit-exhaustion and no-overrun checks (Phase 9).
 
 ### 2. Monitor-Driven Agents
 Each agent is fully autonomous within its clock domain:
@@ -91,8 +93,10 @@ The `bridge_item` represents a single 64-bit beat with metadata for constrained-
 | CXL agent | Implemented scaffold | Includes sequencer, driver, and monitor. |
 | UCIe agent | Implemented scaffold | Includes sequencer, driver, and monitor. |
 | Base sequence | Implemented | Generates randomized `bridge_item` traffic. |
-| Scoreboard | Partial | Queue plumbing exists; protocol-accurate prediction is still planned. |
+| Scoreboard | Implemented | Translation-, ordering-, and payload-accurate prediction + PASS/FAIL verdict (`bridge_scoreboard` + `bridge_predict`). |
 | Stress / credit sequences | Planned | Directed stress currently provides the regression coverage. |
+
+> **Run status:** the environment targets UVM 1.2 on a commercial simulator (VCS/Questa); it is **not runnable with the OSS toolchain** here (Icarus/Verilator lack full UVM 1.2). The `verification/cocotb` suite is the OSS-runnable equivalent. The scoreboard prediction file (`bridge_predict.sv`) is Verilator-lint-clean; the UVM classes are reviewed but need a UVM simulator to execute. A clean end-to-end PASS also needs Phase 8 stimulus (well-formed sequences + an end-of-test drain); the base sequence drives random beats and may leave in-flight packets unmatched at `#1000`.
 
 ## Relationship to Directed Tests
 

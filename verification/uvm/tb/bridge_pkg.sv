@@ -15,6 +15,7 @@ package bridge_pkg;
   } cxl_pkt_kind_e;
 
   `include "bridge_item.sv"
+  `include "../env/bridge_predict.sv"
   `include "../seq/bridge_sequences.sv"
   `include "../agents/cxl_agent/cxl_monitor.sv"
   `include "../agents/cxl_agent/cxl_agent.sv"

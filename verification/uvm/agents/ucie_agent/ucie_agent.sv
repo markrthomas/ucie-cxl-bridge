@@ -13,7 +13,7 @@ class ucie_driver extends uvm_driver#(bridge_item);
 
   virtual task run_phase(uvm_phase phase);
     vif.ucie_in_valid <= 0;
-    vif.ucie_out_ready <= 0;
+    vif.ucie_out_ready <= 1;   // consume UCIe requests so C2U egress drains to the scoreboard
 
     forever begin
       seq_item_port.get_next_item(req);

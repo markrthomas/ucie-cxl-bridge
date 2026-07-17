@@ -13,7 +13,7 @@ class cxl_driver extends uvm_driver#(bridge_item);
 
   virtual task run_phase(uvm_phase phase);
     vif.cxl_in_valid <= 0;
-    vif.cxl_out_ready <= 0;
+    vif.cxl_out_ready <= 1;   // consume CXL completions so egress drains to the scoreboard
     vif.link_up <= 1;
     vif.err_inj_en <= 0;
 

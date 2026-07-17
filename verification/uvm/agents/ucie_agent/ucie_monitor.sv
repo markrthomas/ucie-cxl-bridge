@@ -26,8 +26,9 @@ class ucie_monitor extends uvm_monitor;
       if(vif.ucie_mon_cb.ucie_in_valid && vif.ucie_mon_cb.ucie_in_ready) begin
         bridge_item item = bridge_item::type_id::create("item");
         item.data = vif.ucie_mon_cb.ucie_in_data;
-        // kind mapping for UCIe would be different, but let's keep it simple
-        item.kind = cxl_pkt_kind_e'(vif.ucie_mon_cb.ucie_in_data[63:60]);
+        // UCIe kind space differs from cxl_pkt_kind_e; the scoreboard decodes
+        // the raw data. Tag the direction so it routes correctly.
+        item.is_egress = 1'b0;   // UCIe ingress completion
         item_collected_port.write(item);
       end
     end
@@ -39,7 +40,7 @@ class ucie_monitor extends uvm_monitor;
       if(vif.ucie_mon_cb.ucie_out_valid && vif.ucie_mon_cb.ucie_out_ready) begin
         bridge_item item = bridge_item::type_id::create("item");
         item.data = vif.ucie_mon_cb.ucie_out_data;
-        item.kind = cxl_pkt_kind_e'(vif.ucie_mon_cb.ucie_out_data[63:60]);
+        item.is_egress = 1'b1;   // UCIe egress request
         item_collected_port.write(item);
       end
     end

@@ -26,8 +26,8 @@ class cxl_monitor extends uvm_monitor;
       if(vif.cxl_mon_cb.cxl_in_valid && vif.cxl_mon_cb.cxl_in_ready) begin
         bridge_item item = bridge_item::type_id::create("item");
         item.data = vif.cxl_mon_cb.cxl_in_data;
-        // Basic mapping for kind (simplified)
-        item.kind = cxl_pkt_kind_e'(vif.cxl_mon_cb.cxl_in_data[63:60]); 
+        item.kind = cxl_pkt_kind_e'(vif.cxl_mon_cb.cxl_in_data[63:60]);
+        item.is_egress = 1'b0;   // CXL ingress request
         item_collected_port.write(item);
       end
     end
@@ -40,6 +40,7 @@ class cxl_monitor extends uvm_monitor;
         bridge_item item = bridge_item::type_id::create("item");
         item.data = vif.cxl_mon_cb.cxl_out_data;
         item.kind = cxl_pkt_kind_e'(vif.cxl_mon_cb.cxl_out_data[63:60]);
+        item.is_egress = 1'b1;   // CXL egress completion
         item_collected_port.write(item);
       end
     end
