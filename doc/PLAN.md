@@ -49,6 +49,14 @@
 
 **Goal:** promote UVM from a scaffold to an executable constrained-random regression.
 
+**Status (in progress):** scoreboard is protocol-/ordering-/payload-accurate
+(`bridge_scoreboard` + `bridge_predict`); constrained-random *legal* sequences
+(`bridge_cxl_seq` / `bridge_ucie_seq`, writes expand to header+payload beats);
+base test runs both directions + drains; functional covergroups added
+(kind×payload-len, kind×status). Remaining: measure/close coverage ≥95%,
+dedicated backpressure sequences, and a 10k-transaction run — all require a
+UVM 1.2 simulator (VCS/Questa); not runnable with the OSS toolchain here.
+
 ### Updates
 
 - **CXL agent driver:** constrained-random sequence that generates legal

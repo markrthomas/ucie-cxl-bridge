@@ -92,9 +92,11 @@ The `bridge_item` represents a single 64-bit beat with metadata for constrained-
 | `bridge_if` | Implemented | Provides independent clocking blocks for CXL, UCIe, and monitor sampling. |
 | CXL agent | Implemented scaffold | Includes sequencer, driver, and monitor. |
 | UCIe agent | Implemented scaffold | Includes sequencer, driver, and monitor. |
-| Base sequence | Implemented | Generates randomized `bridge_item` traffic. |
+| Base sequence | Implemented | `bridge_base_seq` (random beats) + `bridge_cxl_seq` / `bridge_ucie_seq` (constrained-random *legal* requests/completions; writes and SC completions expand into header + payload beats). |
 | Scoreboard | Implemented | Translation-, ordering-, and payload-accurate prediction + PASS/FAIL verdict (`bridge_scoreboard` + `bridge_predict`). |
-| Stress / credit sequences | Planned | Directed stress currently provides the regression coverage. |
+| Functional coverage | Implemented | Covergroups in the scoreboard: C2U kind × payload-length cross, U2C kind × status cross (sampled on ingress headers). |
+| Base test | Implemented | Runs both sequences concurrently, then drains before the scoreboard verdict. |
+| Credit / backpressure sequences | Planned (Phase 9 / 8) | Targeted credit-exhaustion and randomized-backpressure stimulus. |
 
 > **Run status:** the environment targets UVM 1.2 on a commercial simulator (VCS/Questa); it is **not runnable with the OSS toolchain** here (Icarus/Verilator lack full UVM 1.2). The `verification/cocotb` suite is the OSS-runnable equivalent. The scoreboard prediction file (`bridge_predict.sv`) is Verilator-lint-clean; the UVM classes are reviewed but need a UVM simulator to execute. A clean end-to-end PASS also needs Phase 8 stimulus (well-formed sequences + an end-of-test drain); the base sequence drives random beats and may leave in-flight packets unmatched at `#1000`.
 

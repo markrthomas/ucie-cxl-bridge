@@ -44,10 +44,54 @@ class bridge_scoreboard extends uvm_scoreboard;
 
   `uvm_component_utils(bridge_scoreboard)
 
+  // ---- Functional coverage (sampled on ingress headers, where the packet is
+  // fully known and correctly classified header-vs-payload). ----
+  covergroup cg_c2u with function sample(bit [3:0] kind, bit posted, int plb);
+    option.per_instance = 1;
+    cp_kind: coverpoint kind {
+      bins io_req   = {PK_CXL_IO_REQ};
+      bins mem_rd   = {PK_CXL_MEM_RD};
+      bins mem_wr   = {PK_CXL_MEM_WR};
+      bins cache_rd = {PK_CXL_CACHE_RD};
+      bins cache_wr = {PK_CXL_CACHE_WR};
+    }
+    cp_posted: coverpoint posted;
+    cp_pl: coverpoint plb {
+      bins none = {0};
+      bins one  = {1};
+      bins few  = {[2:4]};
+      bins many = {[5:64]};
+    }
+    x_kind_pl: cross cp_kind, cp_pl;
+  endgroup
+
+  covergroup cg_u2c with function sample(bit [3:0] kind, bit [3:0] status, int plb);
+    option.per_instance = 1;
+    cp_kind: coverpoint kind {
+      bins ad_cpl    = {PK_UCIE_AD_CPL};
+      bins mem_cpl   = {PK_UCIE_MEM_CPL};
+      bins cache_cpl = {PK_UCIE_CACHE_CPL};
+    }
+    cp_status: coverpoint status {
+      bins sc = {CPL_SC};
+      bins ur = {CPL_UR};
+      bins ca = {CPL_CA};
+    }
+    cp_pl: coverpoint plb {
+      bins none = {0};
+      bins one  = {1};
+      bins few  = {[2:4]};
+      bins many = {[5:64]};
+    }
+    x_kind_status: cross cp_kind, cp_status;
+  endgroup
+
   function new(string name, uvm_component parent);
     super.new(name, parent);
     cxl_export  = new("cxl_export",  this);
     ucie_export = new("ucie_export", this);
+    cg_c2u      = new();
+    cg_u2c      = new();
   endfunction
 
   // Build a lightweight prediction record.
@@ -74,6 +118,7 @@ class bridge_scoreboard extends uvm_scoreboard;
         else                          c2u_np_exp.push_back(pred);
         cxl_in_pl_cnt    = c2u_payload_len(item.data);
         cxl_in_pl_posted = is_posted_cxl(item.data);
+        cg_c2u.sample(f_kind(item.data), is_posted_cxl(item.data), c2u_payload_len(item.data));
         `uvm_info("SB", $sformatf("C2U req in: %h -> pred %h (pl=%0d)",
                   item.data, pred.data, pred.pl_beats), UVM_HIGH)
       end else begin
@@ -116,6 +161,7 @@ class bridge_scoreboard extends uvm_scoreboard;
                                      u2c_payload_len(item.data));
         u2c_exp.push_back(pred);
         ucie_in_pl_cnt = u2c_payload_len(item.data);
+        cg_u2c.sample(f_kind(item.data), f_code(item.data), u2c_payload_len(item.data));
         `uvm_info("SB", $sformatf("U2C cpl in: %h -> pred %h (pl=%0d)",
                   item.data, pred.data, pred.pl_beats), UVM_HIGH)
       end else begin
