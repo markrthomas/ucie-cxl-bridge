@@ -177,3 +177,41 @@ async def test_u2c_ad_cpl_ca(dut):
 
     exp = expect_cxl_from_ucie(pkt)
     assert got == exp, f"Expected 0x{exp:016x}, got 0x{got:016x}"
+
+
+@cocotb.test()
+async def test_c2u_mem_wr_payload(dut):
+    """A 4-beat MEM_WR payload burst reaches UCIe egress intact and in order."""
+    _start_clocks(dut)
+    await reset_dut(dut, dut.clk, dut.ucie_clk)
+    cxl  = CXLDriver(dut, dut.clk)
+    ucie = UCIeDriver(dut, dut.ucie_clk)
+
+    pkt = pack_cxl_mem_wr(CXL_MEM_OP_WR, 0x55, 0x5000, 0x07, 0x55, 0x00)  # (7+1)/2 = 4 beats
+    await cxl.send(pkt)
+    got = await ucie.recv()
+
+    exp = expect_ucie_from_cxl(pkt)
+    assert got == exp, f"Header: expected 0x{exp:016x}, got 0x{got:016x}"
+    assert len(ucie.last_payload) == 4, f"expected 4 payload beats, got {len(ucie.last_payload)}"
+    assert ucie.last_payload == cxl.last_payload, \
+        f"payload mismatch: sent {[hex(x) for x in cxl.last_payload]} got {[hex(x) for x in ucie.last_payload]}"
+
+
+@cocotb.test()
+async def test_u2c_mem_cpl_payload(dut):
+    """A 4-beat SC MEM_CPL payload burst reaches CXL egress intact and in order."""
+    _start_clocks(dut)
+    await reset_dut(dut, dut.clk, dut.ucie_clk)
+    cxl  = CXLDriver(dut, dut.clk)
+    ucie = UCIeDriver(dut, dut.ucie_clk)
+
+    pkt = with_checksum(pack_ucie_mem_cpl(UCIE_CPL_SC, 0x66, 0x0600, 0x07, 0x66, 0x00))  # 4 beats
+    await ucie.send(pkt)
+    got = await cxl.recv()
+
+    exp = expect_cxl_from_ucie(pkt)
+    assert got == exp, f"Header: expected 0x{exp:016x}, got 0x{got:016x}"
+    assert len(cxl.last_payload) == 4, f"expected 4 payload beats, got {len(cxl.last_payload)}"
+    assert cxl.last_payload == ucie.last_payload, \
+        f"payload mismatch: sent {[hex(x) for x in ucie.last_payload]} got {[hex(x) for x in cxl.last_payload]}"

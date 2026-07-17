@@ -94,6 +94,25 @@ module tb_cxl_ucie_bridge;
     .cxl_out_ready(cxl_out_ready)
   );
 
+  // Phase 7: payload-content integrity checker (taps DUT internal payload FIFOs).
+  cxl_ucie_bridge_payload_chk #(.WIDTH(W)) u_payload_chk (
+    .clk(clk),
+    .ucie_clk(ucie_clk),
+    .rst_n(rst_n),
+    .c2u_pp_wr        (dut.c2u_pp_wr),
+    .c2u_pp_w_data    (dut.c2u_payload_w_data),
+    .c2u_pp_rd        (dut.c2u_pp_rd),
+    .c2u_pp_rd_data   (dut.c2u_pp_rd_data),
+    .c2u_npp_wr       (dut.c2u_npp_wr),
+    .c2u_npp_w_data   (dut.c2u_payload_w_data),
+    .c2u_npp_rd       (dut.c2u_npp_rd),
+    .c2u_npp_rd_data  (dut.c2u_npp_rd_data),
+    .u2c_payload_wr   (dut.u2c_payload_wr),
+    .u2c_payload_w_data(dut.u2c_payload_w_data),
+    .u2c_payload_rd   (dut.u2c_payload_rd),
+    .u2c_payload_rd_data(dut.u2c_payload_rd_data)
+  );
+
   initial begin
     if ($test$plusargs("vcd")) begin
       $dumpfile("build/waves.vcd");
@@ -321,6 +340,38 @@ module tb_cxl_ucie_bridge;
     end
   endfunction
 
+  // Mirrors bridge RTL get_c2u_payload_len: payload beat count for a CXL packet.
+  function automatic [7:0] tb_c2u_pl_len;
+    input [63:0] pkt;
+    reg [3:0] kind; reg [3:0] code; reg [7:0] length;
+    begin
+      kind   = pkt[PKT_KIND_MSB:PKT_KIND_LSB];
+      code   = pkt[PKT_CODE_MSB:PKT_CODE_LSB];
+      length = pkt[PKT_LEN_MSB:PKT_LEN_LSB];
+      if (kind == CXL_PKT_KIND_MEM_WR || kind == CXL_PKT_KIND_CACHE_WR ||
+          (kind == CXL_PKT_KIND_IO_REQ && (code == CXL_IO_OP_CFG_WR || code == CXL_IO_OP_MEM_WR)))
+        tb_c2u_pl_len = (length + 8'h01) >> 1;
+      else
+        tb_c2u_pl_len = 8'h00;
+    end
+  endfunction
+
+  // Mirrors bridge RTL get_u2c_payload_len: payload beat count for a UCIe packet.
+  function automatic [7:0] tb_u2c_pl_len;
+    input [63:0] pkt;
+    reg [3:0] kind; reg [3:0] code; reg [7:0] length;
+    begin
+      kind   = pkt[PKT_KIND_MSB:PKT_KIND_LSB];
+      code   = pkt[PKT_CODE_MSB:PKT_CODE_LSB];
+      length = pkt[PKT_LEN_MSB:PKT_LEN_LSB];
+      if ((kind == UCIE_PKT_KIND_AD_CPL || kind == UCIE_PKT_KIND_MEM_CPL ||
+           kind == UCIE_PKT_KIND_CACHE_CPL) && (code == UCIE_CPL_SC) && (length > 0))
+        tb_u2c_pl_len = (length + 8'h01) >> 1;
+      else
+        tb_u2c_pl_len = 8'h00;
+    end
+  endfunction
+
   // Determines if a UCIe output packet came from the posted c2u FIFO.
   // UCIE_MSG_MEM_WR and UCIE_MSG_CACHE_WR can only originate from posted CXL requests.
   function automatic is_ucie_posted;
@@ -336,8 +387,9 @@ module tb_cxl_ucie_bridge;
 
   task automatic scoreboard_step_clk;
     begin
-      // c2u input: route expected output to posted or NP gold queue
-      if (cxl_in_valid && cxl_in_ready) begin
+      // c2u input: route expected output to posted or NP gold queue.
+      // Skip payload beats (header-only scoreboard; payload verified by u_payload_chk).
+      if (cxl_in_valid && cxl_in_ready && !dut.c2u_ing_is_payload) begin
         if (is_posted_cxl(cxl_in_data)) begin
           if (c2u_posted_gold_wr >= GOLD_SZ) begin
             $display("FAIL: gold_c2u_posted overflow");
@@ -356,7 +408,7 @@ module tb_cxl_ucie_bridge;
         c2u_sent = c2u_sent + 1;
       end
 
-      if (cxl_out_valid && cxl_out_ready) begin
+      if (cxl_out_valid && cxl_out_ready && !dut.u2c_egr_is_payload) begin
         if (u2c_gold_rd >= u2c_gold_wr) begin
           $display("FAIL: u2c pop underrun");
           $finish(1);
@@ -401,8 +453,9 @@ module tb_cxl_ucie_bridge;
 
   task automatic scoreboard_step_ucie;
     begin
-      // c2u output: buffer beats as they are observed; reconcile on clk.
-      if (ucie_out_valid && ucie_out_ready) begin
+      // c2u output: buffer header beats as observed; reconcile on clk.
+      // Skip payload beats (verified by u_payload_chk).
+      if (ucie_out_valid && ucie_out_ready && !dut.c2u_egr_is_payload) begin
         if (c2u_pending_wr >= GOLD_SZ) begin
           $display("FAIL: c2u pending overflow");
           $finish(1);
@@ -412,8 +465,8 @@ module tb_cxl_ucie_bridge;
         c2u_pending_wr = c2u_pending_wr + 1;
       end
 
-      // u2c input: route expected output to gold queue
-      if (ucie_in_valid && ucie_in_ready) begin
+      // u2c input: route expected output to gold queue (skip payload beats).
+      if (ucie_in_valid && ucie_in_ready && !dut.u2c_ing_is_payload) begin
         if (u2c_gold_wr >= GOLD_SZ) begin
           $display("FAIL: gold_u2c overflow");
           $finish(1);
@@ -429,46 +482,78 @@ module tb_cxl_ucie_bridge;
   reg [W-1:0] tc_ucie;
   reg [W-1:0] exp_ucie;
   reg [W-1:0] exp_cxl;
+  reg [W-1:0] pl_seq;          // deterministic payload beat pattern source
 
+  // Send a CXL header + its inferred payload beats, check the translated header
+  // at UCIe egress, then drain the payload beats. Payload content is arbitrary
+  // (verified independently by u_payload_chk). Egress ready is held low during
+  // ingress so the header cannot be consumed before it is checked.
   task automatic test_c2u;
     input [W-1:0] pkt;
+    integer nb, k;
     begin
-      tc_cxl = pkt;
+      tc_cxl   = pkt;
       exp_ucie = expect_ucie_from_cxl(pkt);
+      nb       = tb_c2u_pl_len(pkt);
+      ucie_out_ready = 1'b0;
       @(posedge clk);
-      cxl_in_data = tc_cxl;
+      cxl_in_data  = tc_cxl;
       cxl_in_valid = 1'b1;
-      ucie_out_ready = 1'b1;
       @(posedge clk);
       while (!(cxl_in_valid && cxl_in_ready)) @(posedge clk);
+      for (k = 0; k < nb; k = k + 1) begin
+        pl_seq      = pl_seq + 1;
+        cxl_in_data = {32'hDA7A_0C20, pl_seq[31:0]};
+        @(posedge clk);
+        while (!(cxl_in_valid && cxl_in_ready)) @(posedge clk);
+      end
       cxl_in_valid = 1'b0;
+      ucie_out_ready = 1'b1;
       wait (ucie_out_valid);
       if (ucie_out_data !== exp_ucie) begin
         $display("FAIL: decode_table C2U mismatch: sent_cxl=%h exp_ucie=%h got_ucie=%h", tc_cxl, exp_ucie, ucie_out_data);
         $finish(1);
       end
       @(posedge ucie_clk); #1;
+      for (k = 0; k < nb; k = k + 1) begin
+        wait (ucie_out_valid);
+        @(posedge ucie_clk); #1;
+      end
     end
   endtask
 
   task automatic test_u2c;
     input [W-1:0] pkt;
+    integer nb, k;
     begin
       tc_ucie = pkt;
       tc_ucie[PKT_MISC_MSB:PKT_MISC_LSB] = 8'h00;
       tc_ucie[PKT_MISC_MSB:PKT_MISC_LSB] = bridge_checksum(tc_ucie);
       exp_cxl = expect_cxl_from_ucie(tc_ucie);
+      nb      = tb_u2c_pl_len(tc_ucie);
+      cxl_out_ready = 1'b0;
       @(posedge clk);
-      ucie_in_data = tc_ucie;
+      ucie_in_data  = tc_ucie;
       ucie_in_valid = 1'b1;
-      cxl_out_ready = 1'b1;
       @(posedge ucie_clk);
       while (!(ucie_in_valid && ucie_in_ready)) @(posedge ucie_clk);
+      for (k = 0; k < nb; k = k + 1) begin
+        pl_seq       = pl_seq + 1;
+        ucie_in_data = {32'hDA7A_0C2C, pl_seq[31:0]};
+        @(posedge ucie_clk);
+        while (!(ucie_in_valid && ucie_in_ready)) @(posedge ucie_clk);
+      end
       ucie_in_valid = 1'b0;
-      wait (cxl_out_valid); @(posedge clk);
+      cxl_out_ready = 1'b1;
+      wait (cxl_out_valid);
       if (cxl_out_data !== exp_cxl) begin
         $display("FAIL: decode_table U2C mismatch: sent_ucie=%h exp_cxl=%h got_cxl=%h", tc_ucie, exp_cxl, cxl_out_data);
         $finish(1);
+      end
+      @(posedge clk); #1;
+      for (k = 0; k < nb; k = k + 1) begin
+        wait (cxl_out_valid);
+        @(posedge clk); #1;
       end
     end
   endtask
@@ -494,6 +579,7 @@ module tb_cxl_ucie_bridge;
     link_up              = 1'b0;
     err_inj_en           = 1'b0;
     seed                 = 32'hACE15EED;
+    pl_seq               = {W{1'b0}};
     c2u_posted_gold_wr   = 0;
     c2u_posted_gold_rd   = 0;
     c2u_np_gold_wr       = 0;
@@ -529,7 +615,7 @@ module tb_cxl_ucie_bridge;
     @(posedge ucie_clk); #1;
 
     @(posedge clk);
-    ucie_in_data   = pack_ucie_ad_cpl(UCIE_CPL_SC, 8'h5a, 16'h0040, 8'h04, 8'hc3, 8'h18, 8'h00);
+    ucie_in_data   = pack_ucie_ad_cpl(UCIE_CPL_SC, 8'h5a, 16'h0040, 8'h00, 8'hc3, 8'h18, 8'h00);
     ucie_in_data[PKT_MISC_MSB:PKT_MISC_LSB] = bridge_checksum(ucie_in_data);
     ucie_in_valid  = 1'b1;
     cxl_out_ready  = 1'b1;
@@ -563,13 +649,13 @@ module tb_cxl_ucie_bridge;
 
       // CXL.mem write
       @(posedge clk);
-      cxl_in_data  = pack_cxl_mem_wr(4'h2, 8'h22, 16'h4000, 8'h04, 8'he5, 8'ha3);
+      cxl_in_data  = pack_cxl_mem_wr(4'h2, 8'h22, 16'h4000, 8'h00, 8'he5, 8'ha3);
       cxl_in_valid = 1'b1;
       @(posedge clk);
       while (!(cxl_in_valid && cxl_in_ready)) @(posedge clk);
       cxl_in_valid = 1'b0;
       wait (ucie_out_valid);
-      if (ucie_out_data !== expect_ucie_from_cxl(pack_cxl_mem_wr(4'h2, 8'h22, 16'h4000, 8'h04, 8'he5, 8'ha3))) begin
+      if (ucie_out_data !== expect_ucie_from_cxl(pack_cxl_mem_wr(4'h2, 8'h22, 16'h4000, 8'h00, 8'he5, 8'ha3))) begin
         $display("FAIL: smoke mem_wr got %h", ucie_out_data); $finish(1);
       end
       @(posedge ucie_clk); #1;
@@ -589,19 +675,19 @@ module tb_cxl_ucie_bridge;
 
       // CXL.cache write
       @(posedge clk);
-      cxl_in_data  = pack_cxl_cache_wr(4'h3, 8'h44, 16'hc000, 8'h01, 8'ha7, 8'h5b);
+      cxl_in_data  = pack_cxl_cache_wr(4'h3, 8'h44, 16'hc000, 8'h00, 8'ha7, 8'h5b);
       cxl_in_valid = 1'b1;
       @(posedge clk);
       while (!(cxl_in_valid && cxl_in_ready)) @(posedge clk);
       cxl_in_valid = 1'b0;
       wait (ucie_out_valid);
-      if (ucie_out_data !== expect_ucie_from_cxl(pack_cxl_cache_wr(4'h3, 8'h44, 16'hc000, 8'h01, 8'ha7, 8'h5b))) begin
+      if (ucie_out_data !== expect_ucie_from_cxl(pack_cxl_cache_wr(4'h3, 8'h44, 16'hc000, 8'h00, 8'ha7, 8'h5b))) begin
         $display("FAIL: smoke cache_wr got %h", ucie_out_data); $finish(1);
       end
       @(posedge ucie_clk); #1;
 
       // UCIe MEM_CPL -> CXL MEM_CPL
-      upkt = pack_ucie_mem_cpl(UCIE_CPL_SC, 8'h11, 16'h0800, 8'h08, 8'hd4, 8'hf5, 8'h00);
+      upkt = pack_ucie_mem_cpl(UCIE_CPL_SC, 8'h11, 16'h0800, 8'h00, 8'hd4, 8'hf5, 8'h00);
       upkt[PKT_MISC_MSB:PKT_MISC_LSB] = bridge_checksum(upkt);
       @(posedge clk);
       ucie_in_data = upkt; ucie_in_valid = 1'b1; cxl_out_ready = 1'b1;
@@ -652,7 +738,7 @@ module tb_cxl_ucie_bridge;
 
       // posted packet 0: MEM_WR
       @(posedge clk);
-      cxl_in_data  = pack_cxl_mem_wr(4'h0, 8'hB1, 16'h3000, 8'h04, 8'h30, 8'h00);
+      cxl_in_data  = pack_cxl_mem_wr(4'h0, 8'hB1, 16'h3000, 8'h00, 8'h30, 8'h00);
       exp_posted0  = expect_ucie_from_cxl(cxl_in_data);
       cxl_in_valid = 1'b1;
       @(posedge clk);
@@ -661,7 +747,7 @@ module tb_cxl_ucie_bridge;
 
       // posted packet 1: CACHE_WR
       @(posedge clk);
-      cxl_in_data  = pack_cxl_cache_wr(4'h0, 8'hB2, 16'h4000, 8'h04, 8'h40, 8'h00);
+      cxl_in_data  = pack_cxl_cache_wr(4'h0, 8'hB2, 16'h4000, 8'h00, 8'h40, 8'h00);
       exp_posted1  = expect_ucie_from_cxl(cxl_in_data);
       cxl_in_valid = 1'b1;
       @(posedge clk);
@@ -772,7 +858,7 @@ module tb_cxl_ucie_bridge;
 
       // MEM_WR_DATA
       @(posedge clk);
-      test_pkt = pack_cxl_mem_wr(CXL_MEM_OP_WR_DATA, 8'hD2, 16'h8000, 8'h04, 8'h72, 8'h00);
+      test_pkt = pack_cxl_mem_wr(CXL_MEM_OP_WR_DATA, 8'hD2, 16'h8000, 8'h00, 8'h72, 8'h00);
       exp_pkt  = expect_ucie_from_cxl(test_pkt);
       cxl_in_data = test_pkt; cxl_in_valid = 1'b1;
       @(posedge clk); while (!(cxl_in_valid && cxl_in_ready)) @(posedge clk);
@@ -800,7 +886,7 @@ module tb_cxl_ucie_bridge;
 
       // CACHE_WR_DATA
       @(posedge clk);
-      test_pkt = pack_cxl_cache_wr(CXL_CACHE_OP_WR_DATA, 8'hD4, 16'hA000, 8'h04, 8'h74, 8'h00);
+      test_pkt = pack_cxl_cache_wr(CXL_CACHE_OP_WR_DATA, 8'hD4, 16'hA000, 8'h00, 8'h74, 8'h00);
       exp_pkt  = expect_ucie_from_cxl(test_pkt);
       cxl_in_data = test_pkt; cxl_in_valid = 1'b1;
       @(posedge clk); while (!(cxl_in_valid && cxl_in_ready)) @(posedge clk);
@@ -842,6 +928,7 @@ module tb_cxl_ucie_bridge;
                  {expected_clean[W-1:1], ~expected_clean[0]}, ucie_out_data);
         $finish(1);
       end
+      @(posedge ucie_clk); #1;   // consume so egress is clean for the next test
 
       $display("PASS smoke error_injection");
     end
@@ -888,6 +975,40 @@ module tb_cxl_ucie_bridge;
       $display("PASS smoke decode_table");
     end
 
+    // --- Smoke 5.6: directed multi-beat payload bursts (1/4/16 beats) ---
+    // Header length L yields ceil(L/2) payload beats; content is verified by
+    // u_payload_chk. Covers both C2U ordering classes (posted MEM/CACHE writes,
+    // non-posted io writes) and all three U2C SC completion kinds.
+    begin : blk_payload_bursts
+      $display("INFO: directed multi-beat payload bursts (1/4/16)");
+
+      // C2U posted (MEM_WR / CACHE_WR): 1, 4, 16 beats
+      test_c2u(pack_cxl_mem_wr  (CXL_MEM_OP_WR,     8'h30, 16'h1000, 8'd1,  8'h30, 8'h00));
+      test_c2u(pack_cxl_mem_wr  (CXL_MEM_OP_WR,     8'h31, 16'h1100, 8'd7,  8'h31, 8'h00));
+      test_c2u(pack_cxl_mem_wr  (CXL_MEM_OP_WR,     8'h32, 16'h1200, 8'd31, 8'h32, 8'h00));
+      test_c2u(pack_cxl_cache_wr(CXL_CACHE_OP_WR,   8'h33, 16'h2000, 8'd1,  8'h33, 8'h00));
+      test_c2u(pack_cxl_cache_wr(CXL_CACHE_OP_WR,   8'h34, 16'h2100, 8'd7,  8'h34, 8'h00));
+      test_c2u(pack_cxl_cache_wr(CXL_CACHE_OP_WR,   8'h35, 16'h2200, 8'd31, 8'h35, 8'h00));
+
+      // C2U non-posted io writes (payload rides the NP payload FIFO): 1, 4, 16 beats
+      test_c2u(pack_cxl_io_req  (CXL_IO_OP_MEM_WR,  8'h36, 16'h3000, 8'd1,  8'h36, 8'h00));
+      test_c2u(pack_cxl_io_req  (CXL_IO_OP_MEM_WR,  8'h37, 16'h3100, 8'd7,  8'h37, 8'h00));
+      test_c2u(pack_cxl_io_req  (CXL_IO_OP_CFG_WR,  8'h38, 16'h3200, 8'd31, 8'h38, 8'h00));
+
+      // U2C SC completions (AD / MEM / CACHE): 1, 4, 16 beats
+      test_u2c(pack_ucie_ad_cpl   (UCIE_CPL_SC, 8'h40, 16'h0010, 8'd1,  8'h40, 8'h00, 8'h00));
+      test_u2c(pack_ucie_ad_cpl   (UCIE_CPL_SC, 8'h41, 16'h0010, 8'd7,  8'h41, 8'h00, 8'h00));
+      test_u2c(pack_ucie_ad_cpl   (UCIE_CPL_SC, 8'h42, 16'h0010, 8'd31, 8'h42, 8'h00, 8'h00));
+      test_u2c(pack_ucie_mem_cpl  (UCIE_CPL_SC, 8'h43, 16'h0040, 8'd1,  8'h43, 8'h00, 8'h00));
+      test_u2c(pack_ucie_mem_cpl  (UCIE_CPL_SC, 8'h44, 16'h0040, 8'd7,  8'h44, 8'h00, 8'h00));
+      test_u2c(pack_ucie_mem_cpl  (UCIE_CPL_SC, 8'h45, 16'h0040, 8'd31, 8'h45, 8'h00, 8'h00));
+      test_u2c(pack_ucie_cache_cpl(UCIE_CPL_SC, 8'h46, 16'h0070, 8'd1,  8'h46, 8'h00, 8'h00));
+      test_u2c(pack_ucie_cache_cpl(UCIE_CPL_SC, 8'h47, 16'h0070, 8'd7,  8'h47, 8'h00, 8'h00));
+      test_u2c(pack_ucie_cache_cpl(UCIE_CPL_SC, 8'h48, 16'h0070, 8'd31, 8'h48, 8'h00, 8'h00));
+
+      $display("PASS smoke payload_bursts");
+    end
+
     // --- Smoke 6: clock ratio 2:1 (ucie_clk faster: 5 ns period = 200 MHz) ---
     // Re-reset with new clock ratio; run a quick c2u round-trip to prove CDC works.
     begin : blk_ratio_2_1
@@ -915,7 +1036,7 @@ module tb_cxl_ucie_bridge;
       // UCIe MEM_CPL -> CXL
       begin : b21_u2c
         reg [W-1:0] upkt;
-        upkt = pack_ucie_mem_cpl(UCIE_CPL_SC, 8'hA0, 16'h0400, 8'h04, 8'h10, 8'hf5, 8'h00);
+        upkt = pack_ucie_mem_cpl(UCIE_CPL_SC, 8'hA0, 16'h0400, 8'h00, 8'h10, 8'hf5, 8'h00);
         upkt[PKT_MISC_MSB:PKT_MISC_LSB] = bridge_checksum(upkt);
         @(posedge ucie_clk);
         ucie_in_data = upkt; ucie_in_valid = 1'b1; cxl_out_ready = 1'b1;
@@ -942,7 +1063,7 @@ module tb_cxl_ucie_bridge;
 
       // CXL.cache write (posted)
       @(posedge clk);
-      cxl_in_data    = pack_cxl_cache_wr(4'h2, 8'hB0, 16'h5678, 8'h02, 8'h20, 8'h00);
+      cxl_in_data    = pack_cxl_cache_wr(4'h2, 8'hB0, 16'h5678, 8'h00, 8'h20, 8'h00);
       cxl_in_valid   = 1'b1;
       ucie_out_ready = 1'b1;
       @(posedge clk);
@@ -950,14 +1071,14 @@ module tb_cxl_ucie_bridge;
       cxl_in_valid = 1'b0;
       wait (ucie_out_valid); @(posedge ucie_clk);
       if (ucie_out_data !== expect_ucie_from_cxl(
-            pack_cxl_cache_wr(4'h2, 8'hB0, 16'h5678, 8'h02, 8'h20, 8'h00))) begin
+            pack_cxl_cache_wr(4'h2, 8'hB0, 16'h5678, 8'h00, 8'h20, 8'h00))) begin
         $display("FAIL: ratio_1_3 c2u got=%h", ucie_out_data); $finish(1);
       end
 
       // UCIe AD_CPL -> CXL
       begin : b13_u2c
         reg [W-1:0] upkt;
-        upkt = pack_ucie_ad_cpl(UCIE_CPL_SC, 8'hB0, 16'h0200, 8'h02, 8'h20, 8'h18, 8'h00);
+        upkt = pack_ucie_ad_cpl(UCIE_CPL_SC, 8'hB0, 16'h0200, 8'h00, 8'h20, 8'h18, 8'h00);
         upkt[PKT_MISC_MSB:PKT_MISC_LSB] = bridge_checksum(upkt);
         @(posedge ucie_clk);
         ucie_in_data = upkt; ucie_in_valid = 1'b1; cxl_out_ready = 1'b1;
@@ -1093,7 +1214,7 @@ module tb_cxl_ucie_bridge;
     repeat (FIFO_DEPTH + 64) begin
       @(posedge clk);
 
-      if (cxl_out_valid && cxl_out_ready) begin
+      if (cxl_out_valid && cxl_out_ready && !dut.u2c_egr_is_payload) begin
         if (u2c_gold_rd >= u2c_gold_wr) begin
           $display("FAIL: drain u2c underrun");
           $finish(1);
@@ -1323,6 +1444,8 @@ module tb_cxl_ucie_bridge;
 
     $display("PASS stress_heavy c2u_beats=%0d u2c_beats=%0d (after default stress %0d/%0d)",
              c2u_sent, u2c_sent, p1_c2u_sent, p1_u2c_sent);
+    $display("INFO: payload_chk verified beats: c2u_posted=%0d c2u_np=%0d u2c=%0d",
+             u_payload_chk.c2u_pp_beats, u_payload_chk.c2u_npp_beats, u_payload_chk.u2c_beats);
     $finish(0);
   end
 

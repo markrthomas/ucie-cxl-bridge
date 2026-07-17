@@ -106,16 +106,15 @@ make lint
 - **Verification Plan**: [verification/uvm/README.md](verification/uvm/README.md) - UVM environment and methodology.
 - **Contributing**: [CONTRIBUTING.md](CONTRIBUTING.md) - Setup guide and CI details.
 
-## Status: Phase 6 (Baseline)
+## Status: Phase 7 (Multi-beat payload transport)
 
-The current RTL implements granular protocol opcodes and fully integrated cross-domain credit counters. It is verified for structural integrity and logical correctness across varied clock ratios and traffic patterns.
+The current RTL implements granular protocol opcodes, fully integrated cross-domain credit counters, and multi-beat payload transport: each write header is followed by `ceil(length/2)` payload beats carried in dedicated per-direction payload FIFOs (C2U split posted/NP to preserve per-class ordering under the reordering egress arbiter). It is verified for structural integrity and logical correctness across varied clock ratios and traffic patterns.
 
 ## Known Limits
 
 | Area | Current Limit |
 |:---|:---|
 | Protocol compliance | The 64-bit packet format is a compact model, not a full CXL or UCIe wire encoding. |
-| Payload data | Header/control fields are modeled; multi-beat payload transport is not implemented. |
 | Link training | `link_up` is an external input consumed by the reset-drain FSM; PHY training is out of scope. |
 | UVM | UVM files provide a starter constrained-random environment; directed tests remain the executable regression baseline. |
 

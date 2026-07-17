@@ -9,7 +9,7 @@ UCIeDriver  : drives ucie_in_* (ucie_clk domain) and reads ucie_out_* (ucie_clk 
 reset_dut   : asserts rst_n=0 for 6 clk cycles, then releases with link_up=1.
 """
 
-from cocotb.triggers import RisingEdge
+from cocotb.triggers import RisingEdge, ReadOnly
 
 # ---- CXL packet kinds [63:60] ----
 CXL_PKT_KIND_IO_REQ    = 0x1
@@ -219,6 +219,55 @@ def expect_cxl_from_ucie(ucie_pkt):
         return invalid
 
 
+# ---- Payload-length helpers (mirror get_*_payload_len in the bridge RTL) ----
+
+def c2u_payload_len(pkt):
+    """Number of payload beats following a CXL write header (0 for non-writes)."""
+    kind = _get_field(pkt, PKT_KIND_MSB, PKT_KIND_LSB)
+    code = _get_field(pkt, PKT_CODE_MSB, PKT_CODE_LSB)
+    ln   = _get_field(pkt, PKT_LEN_MSB,  PKT_LEN_LSB)
+    if kind in (CXL_PKT_KIND_MEM_WR, CXL_PKT_KIND_CACHE_WR) or \
+       (kind == CXL_PKT_KIND_IO_REQ and code in (CXL_IO_OP_CFG_WR, CXL_IO_OP_MEM_WR)):
+        return (ln + 1) >> 1
+    return 0
+
+def u2c_payload_len(pkt):
+    """Number of payload beats following a UCIe SC completion header (0 otherwise)."""
+    kind = _get_field(pkt, PKT_KIND_MSB, PKT_KIND_LSB)
+    code = _get_field(pkt, PKT_CODE_MSB, PKT_CODE_LSB)
+    ln   = _get_field(pkt, PKT_LEN_MSB,  PKT_LEN_LSB)
+    if kind in (UCIE_PKT_KIND_AD_CPL, UCIE_PKT_KIND_MEM_CPL, UCIE_PKT_KIND_CACHE_CPL) \
+       and code == UCIE_CPL_SC and ln > 0:
+        return (ln + 1) >> 1
+    return 0
+
+def _ucie_out_payload_len(pkt):
+    """Payload beats trailing a translated UCIe egress header (write msg types).
+    Note: io-writes (CFG/MEM msg) are indistinguishable from io-reads at the UCIe
+    layer; this suite only issues posted mem/cache writes, which are unambiguous."""
+    code = _get_field(pkt, PKT_CODE_MSB, PKT_CODE_LSB)
+    ln   = _get_field(pkt, PKT_LEN_MSB,  PKT_LEN_LSB)
+    if code in (UCIE_MSG_MEM_WR, UCIE_MSG_MEM_WR_DATA,
+                UCIE_MSG_CACHE_WR, UCIE_MSG_CACHE_WR_DATA):
+        return (ln + 1) >> 1
+    return 0
+
+def _cxl_out_payload_len(pkt):
+    """Payload beats trailing a translated CXL egress completion header."""
+    kind = _get_field(pkt, PKT_KIND_MSB, PKT_KIND_LSB)
+    code = _get_field(pkt, PKT_CODE_MSB, PKT_CODE_LSB)
+    ln   = _get_field(pkt, PKT_LEN_MSB,  PKT_LEN_LSB)
+    if kind in (CXL_PKT_KIND_IO_CPL, CXL_PKT_KIND_MEM_CPL, CXL_PKT_KIND_CACHE_CPL) \
+       and code == CXL_CPL_SC and ln > 0:
+        return (ln + 1) >> 1
+    return 0
+
+# Deterministic payload beat pattern (content is arbitrary; the Verilog
+# u_payload_chk verifies FIFO content integrity independently).
+def _payload_beat(seq):
+    return (0xDA7A0C2C00000000 | (seq & 0xFFFFFFFF))
+
+
 # ---- Reset ----
 
 async def reset_dut(dut, clk, ucie_clk):
@@ -253,32 +302,54 @@ class CXLDriver:
     def __init__(self, dut, clk):
         self.dut = dut
         self.clk = clk
+        self.last_payload = []   # payload beats driven/drained by the last op
 
-    async def send(self, pkt, timeout=64):
-        """Drive cxl_in_valid/data and wait for cxl_in_ready handshake."""
-        dut = self.dut
-        clk = self.clk
+    async def _handshake_in(self, pkt, timeout):
+        dut, clk = self.dut, self.clk
         dut.cxl_in_data.value  = pkt
         dut.cxl_in_valid.value = 1
         for _ in range(timeout):
             await RisingEdge(clk)
             if int(dut.cxl_in_ready.value) == 1:
-                dut.cxl_in_valid.value = 0
                 return
         raise AssertionError(f"Timeout on cxl_in handshake (pkt=0x{pkt:016x})")
 
+    async def send(self, pkt, timeout=64):
+        """Drive a CXL header, then its inferred payload beats, on the clk domain."""
+        dut, clk = self.dut, self.clk
+        await self._handshake_in(pkt, timeout)
+        self.last_payload = []
+        nb = c2u_payload_len(pkt)
+        for i in range(nb):
+            beat = _payload_beat((pkt + i) & 0xFFFFFFFF)
+            self.last_payload.append(beat)
+            await self._handshake_in(beat, timeout)
+        dut.cxl_in_valid.value = 0
+
     async def recv(self, timeout=64):
-        """Wait for cxl_out_valid and consume one packet on the clk domain."""
-        dut = self.dut
-        clk = self.clk
+        """Consume a CXL completion header (and drain its payload beats).
+
+        Holds ready high and samples each accepted beat in the ReadOnly phase so
+        every valid&&ready edge is counted exactly once (header, then payload)."""
+        dut, clk = self.dut, self.clk
         dut.cxl_out_ready.value = 1
-        for _ in range(timeout):
+        beats = []
+        need  = None
+        idle  = 0
+        while need is None or len(beats) < need:
             await RisingEdge(clk)
             if int(dut.cxl_out_valid.value) == 1:
-                data = int(dut.cxl_out_data.value)
-                dut.cxl_out_ready.value = 0
-                return data
-        raise AssertionError("Timeout waiting for cxl_out_valid")
+                beats.append(int(dut.cxl_out_data.value))
+                if need is None:
+                    need = 1 + _cxl_out_payload_len(beats[0])
+                idle = 0
+            else:
+                idle += 1
+                if idle > timeout:
+                    raise AssertionError("Timeout waiting for cxl_out beat")
+        dut.cxl_out_ready.value = 0
+        self.last_payload = beats[1:]
+        return beats[0]
 
 
 # ---- UCIe-domain driver ----
@@ -289,29 +360,56 @@ class UCIeDriver:
     def __init__(self, dut, ucie_clk):
         self.dut      = dut
         self.ucie_clk = ucie_clk
+        self.last_payload = []
 
-    async def send(self, pkt, timeout=64):
-        """Drive ucie_in_valid/data and wait for ucie_in_ready handshake."""
-        dut = self.dut
-        clk = self.ucie_clk
+    async def _handshake_in(self, pkt, timeout):
+        dut, clk = self.dut, self.ucie_clk
         dut.ucie_in_data.value  = pkt
         dut.ucie_in_valid.value = 1
         for _ in range(timeout):
             await RisingEdge(clk)
             if int(dut.ucie_in_ready.value) == 1:
-                dut.ucie_in_valid.value = 0
                 return
         raise AssertionError(f"Timeout on ucie_in handshake (pkt=0x{pkt:016x})")
 
+    async def send(self, pkt, timeout=64):
+        """Drive a UCIe header, then its inferred payload beats, on the ucie_clk domain."""
+        dut, clk = self.dut, self.ucie_clk
+        await self._handshake_in(pkt, timeout)
+        self.last_payload = []
+        nb = u2c_payload_len(pkt)
+        for i in range(nb):
+            beat = _payload_beat((pkt + i) & 0xFFFFFFFF)
+            self.last_payload.append(beat)
+            await self._handshake_in(beat, timeout)
+        dut.ucie_in_valid.value = 0
+
     async def recv(self, timeout=64):
-        """Wait for ucie_out_valid and consume one packet on the ucie_clk domain."""
-        dut = self.dut
-        clk = self.ucie_clk
+        """Consume a UCIe egress header (and drain its payload beats).
+
+        Holds ready high and records one beat per accepted (valid&&ready) edge.
+        The C2U egress presents its FWFT data through the arbiter FSM, so the
+        settled value must be sampled in the ReadOnly phase to line up each beat
+        with the edge that consumes it (the U2C egress, being direct, samples in
+        the active phase instead — see CXLDriver.recv)."""
+        dut, clk = self.dut, self.ucie_clk
         dut.ucie_out_ready.value = 1
-        for _ in range(timeout):
+        beats = []
+        need  = None
+        idle  = 0
+        while need is None or len(beats) < need:
             await RisingEdge(clk)
+            await ReadOnly()
             if int(dut.ucie_out_valid.value) == 1:
-                data = int(dut.ucie_out_data.value)
-                dut.ucie_out_ready.value = 0
-                return data
-        raise AssertionError("Timeout waiting for ucie_out_valid")
+                beats.append(int(dut.ucie_out_data.value))
+                if need is None:
+                    need = 1 + _ucie_out_payload_len(beats[0])
+                idle = 0
+            else:
+                idle += 1
+                if idle > timeout:
+                    raise AssertionError("Timeout waiting for ucie_out beat")
+        await RisingEdge(clk)   # leave the ReadOnly phase before driving ready
+        dut.ucie_out_ready.value = 0
+        self.last_payload = beats[1:]
+        return beats[0]

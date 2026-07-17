@@ -31,7 +31,8 @@ module cxl_ucie_bridge_chk #(
           $finish(1);
         end
         if (ucie_out_data !== prev_ud) begin
-          $display("ASSERT: ucie_out_data changed while valid && !ready");
+          $display("ASSERT: ucie_out_data changed while valid && !ready: prev=%h now=%h t=%0t",
+                   prev_ud, ucie_out_data, $time);
           $finish(1);
         end
       end

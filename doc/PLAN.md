@@ -2,17 +2,17 @@
 
 **As of:** 2026-05-09
 
-## Current baseline (Phase 6)
+## Current baseline (Phase 7)
 
 | Area | Status |
 |------|--------|
-| RTL | `src/cxl_ucie_bridge.v` — dual-clock async FIFO architecture, granular protocol opcodes, cross-domain credit counters, posted/non-posted ordering domain split, `reset_drain` FSM |
-| Formal | SymbiYosys BMC + cover on `sync_fifo`, `reset_drain`, and `cxl_ucie_bridge` |
-| Directed tests | `verification/directed/` — lint, stress, ordering tests; Verilator clean |
+| RTL | `src/cxl_ucie_bridge.v` — dual-clock async FIFO architecture, granular protocol opcodes, cross-domain credit counters, posted/non-posted ordering domain split, `reset_drain` FSM, **multi-beat payload transport** (per-direction payload FIFOs; C2U split posted/NP; header carries `payload_len`) |
+| Formal | SymbiYosys BMC + cover on `sync_fifo`, `reset_drain`, `cxl_ucie_bridge`, and `payload_fifo` |
+| Directed tests | `verification/directed/` — lint, stress (payload-carrying), ordering, decode-table, **1/4/16-beat payload bursts**; payload-content checker `cxl_ucie_bridge_payload_chk`; Verilator clean |
+| cocotb | `verification/cocotb/` — 11 tests incl. end-to-end payload-content checks each direction |
 | UVM | `verification/uvm/` — starter scaffold (independent CXL + UCIe agents, scoreboard skeleton) |
-| Known limits | Compact 64-bit packet model; no multi-beat payloads; no PHY / link training; credit model is local-counter only |
-| State | `main`, clean |
-| Last commit | `764bdd2` — "docs: expand bridge architecture documentation" |
+| Known limits | Compact 64-bit packet model; no PHY / link training; credit model is local-counter only |
+| State | `main` |
 
 ---
 
@@ -113,7 +113,7 @@ Implement in this order:
    `make -C verification/directed stress` (Verilator, no VCS dependency).
 4. **[DONE] Opcode decode table unit test** — directed test that hits every opcode in
    `cxl_ucie_bridge_defs.vh`; catches decode regressions cheaply.
-5. **Phase 7 payload transport** (multi-beat).
+5. **[DONE] Phase 7 payload transport** (multi-beat).
 6. **Phase 8 UVM closure** (constrained-random).
 7. **Phase 9 credit advertisement** (external credit partner).
 

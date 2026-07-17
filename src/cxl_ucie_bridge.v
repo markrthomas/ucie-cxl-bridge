@@ -12,6 +12,7 @@
 module cxl_ucie_bridge #(
   parameter integer WIDTH      = 64,
   parameter integer FIFO_DEPTH = 8,
+  parameter integer PAYLOAD_FIFO_DEPTH = 16,
   parameter integer POSTED_CREDITS = 8,
   parameter integer NP_CREDITS     = 8,
   parameter integer CPL_CREDITS    = 8
@@ -77,6 +78,46 @@ module cxl_ucie_bridge #(
         CXL_PKT_KIND_CACHE_WR: is_posted = 1'b1;
         default:               is_posted = 1'b0;
       endcase
+    end
+  endfunction
+  /* verilator lint_on UNUSEDSIGNAL */
+
+  /* verilator lint_off UNUSEDSIGNAL */
+  function automatic [7:0] get_c2u_payload_len;
+    input [WIDTH-1:0] pkt;
+    reg [3:0] kind;
+    reg [3:0] code;
+    reg [7:0] length;
+    begin
+      kind = pkt[PKT_KIND_MSB:PKT_KIND_LSB];
+      code = pkt[PKT_CODE_MSB:PKT_CODE_LSB];
+      length = pkt[PKT_LEN_MSB:PKT_LEN_LSB];
+      if (kind == CXL_PKT_KIND_MEM_WR || kind == CXL_PKT_KIND_CACHE_WR ||
+          (kind == CXL_PKT_KIND_IO_REQ && (code == CXL_IO_OP_CFG_WR || code == CXL_IO_OP_MEM_WR))) begin
+        get_c2u_payload_len = (length + 8'h01) >> 1;
+      end else begin
+        get_c2u_payload_len = 8'h00;
+      end
+    end
+  endfunction
+  /* verilator lint_on UNUSEDSIGNAL */
+
+  /* verilator lint_off UNUSEDSIGNAL */
+  function automatic [7:0] get_u2c_payload_len;
+    input [WIDTH-1:0] pkt;
+    reg [3:0] kind;
+    reg [3:0] code;
+    reg [7:0] length;
+    begin
+      kind = pkt[PKT_KIND_MSB:PKT_KIND_LSB];
+      code = pkt[PKT_CODE_MSB:PKT_CODE_LSB];
+      length = pkt[PKT_LEN_MSB:PKT_LEN_LSB];
+      if ((kind == UCIE_PKT_KIND_AD_CPL || kind == UCIE_PKT_KIND_MEM_CPL || kind == UCIE_PKT_KIND_CACHE_CPL) &&
+          (code == UCIE_CPL_SC) && (length > 0)) begin
+        get_u2c_payload_len = (length + 8'h01) >> 1;
+      end else begin
+        get_u2c_payload_len = 8'h00;
+      end
     end
   endfunction
   /* verilator lint_on UNUSEDSIGNAL */
@@ -281,8 +322,40 @@ module cxl_ucie_bridge #(
     .d    (c2u_np_r_empty),    .q(c2u_np_r_empty_clk)
   );
 
+  // Phase 7 payload FIFO status.
+  // C2U payload is split posted/NP so the reordering egress arbiter keeps each
+  // header paired with its own payload (a single shared FIFO would mis-pair a
+  // posted write with a non-posted io-write payload). U2C egress is in-order
+  // (single header FIFO, no arbiter), so a single U2C payload FIFO is safe.
+  wire c2u_pp_w_full;                 // posted payload,     clk domain
+  wire c2u_pp_r_empty;                // posted payload,     ucie_clk domain
+  wire [WIDTH-1:0] c2u_pp_rd_data;    // posted payload,     ucie_clk domain
+
+  wire c2u_npp_w_full;                // non-posted payload, clk domain
+  wire c2u_npp_r_empty;               // non-posted payload, ucie_clk domain
+  wire [WIDTH-1:0] c2u_npp_rd_data;   // non-posted payload, ucie_clk domain
+
+  wire u2c_payload_w_full;
+  wire u2c_payload_r_empty;
+  wire [WIDTH-1:0] u2c_payload_rd_data;
+
+  wire c2u_pp_r_empty_clk;
+  wire c2u_npp_r_empty_clk;
+  cdc_sync #(.STAGES(2)) u_pp_empty_cdc (
+    .clk  (clk), .rst_n(clk_rst_n),
+    .d    (c2u_pp_r_empty), .q(c2u_pp_r_empty_clk)
+  );
+  cdc_sync #(.STAGES(2)) u_npp_empty_cdc (
+    .clk  (clk), .rst_n(clk_rst_n),
+    .d    (c2u_npp_r_empty), .q(c2u_npp_r_empty_clk)
+  );
+
+  wire u2c_payload_r_empty_clk = u2c_payload_r_empty; // already in clk domain
+
   // Phase 4: link readiness FSM (clk domain)
-  wire all_empty  = c2u_posted_r_empty_clk && c2u_np_r_empty_clk && u2c_r_empty;
+  wire all_empty  = c2u_posted_r_empty_clk && c2u_np_r_empty_clk &&
+                   c2u_pp_r_empty_clk && c2u_npp_r_empty_clk &&
+                   u2c_r_empty && u2c_payload_r_empty_clk;
   wire bridge_open;
 
   reset_drain u_reset_drain (
@@ -311,55 +384,187 @@ module cxl_ucie_bridge #(
 
   wire cxl_in_is_posted_w = is_posted(cxl_in_data);
 
+  // Payload length calculations
+  wire [7:0] c2u_hdr_payload_len = get_c2u_payload_len(cxl_in_data);
+  wire       c2u_hdr_has_payload = (c2u_hdr_payload_len > 0);
+
+  wire [7:0] u2c_hdr_payload_len = get_u2c_payload_len(ucie_in_data);
+  wire       u2c_hdr_has_payload = (u2c_hdr_payload_len > 0);
+
+  // Ingress payload counters
+  reg [7:0] c2u_ing_payload_cnt;
+  reg       c2u_ing_payload_posted;   // ordering class of the payload in flight
+  wire      c2u_ing_is_payload = (c2u_ing_payload_cnt > 0);
+
+  reg [7:0] u2c_ing_payload_cnt;
+  wire      u2c_ing_is_payload = (u2c_ing_payload_cnt > 0);
+
+  // Egress payload counters & state registers
+  reg [7:0] c2u_egr_payload_cnt;
+  wire      c2u_egr_is_payload = (c2u_egr_payload_cnt > 0);
+
+  reg [7:0] u2c_egr_payload_cnt;
+  wire      u2c_egr_is_payload = (u2c_egr_payload_cnt > 0);
+
+  // --- UCIe domain egress arbiter select (ucie_clk) ---
+  reg  arb_locked_r;
+  reg  arb_sel_posted_r;
+  reg  arb_sel_payload_posted_r;
+
+  wire arb_sel_now   = !c2u_posted_r_empty;
+  wire arb_sel_final = c2u_egr_is_payload ? arb_sel_payload_posted_r :
+                       (arb_locked_r ? arb_sel_posted_r : arb_sel_now);
+
+  // Ingress write triggers
+  wire c2u_wr        = cxl_in_valid && cxl_in_ready && !c2u_ing_is_payload;
+  wire c2u_posted_wr = c2u_wr &&  cxl_in_is_posted_w;
+  wire c2u_np_wr     = c2u_wr && !cxl_in_is_posted_w;
+  wire c2u_payload_wr = cxl_in_valid && cxl_in_ready && c2u_ing_is_payload;
+  wire c2u_pp_wr      = c2u_payload_wr &&  c2u_ing_payload_posted;   // posted-class payload
+  wire c2u_npp_wr     = c2u_payload_wr && !c2u_ing_payload_posted;   // NP-class payload
+
+  wire u2c_wr        = ucie_in_valid && ucie_in_ready && !u2c_ing_is_payload;
+  wire u2c_payload_wr = ucie_in_valid && ucie_in_ready && u2c_ing_is_payload;
+
+  // Egress read triggers
+  wire c2u_posted_rd = ucie_out_valid && ucie_out_ready && !c2u_egr_is_payload &&  arb_sel_final;
+  wire c2u_np_rd     = ucie_out_valid && ucie_out_ready && !c2u_egr_is_payload && !arb_sel_final;
+  wire c2u_payload_rd = ucie_out_valid && ucie_out_ready && c2u_egr_is_payload;
+  wire c2u_pp_rd      = c2u_payload_rd &&  arb_sel_payload_posted_r; // posted-class payload
+  wire c2u_npp_rd     = c2u_payload_rd && !arb_sel_payload_posted_r; // NP-class payload
+
+  wire u2c_rd        = cxl_out_ready && cxl_out_valid && !u2c_egr_is_payload;
+  wire u2c_payload_rd = cxl_out_ready && cxl_out_valid && u2c_egr_is_payload;
+
+  // Per-class payload FIFO room (C2U); pick by header class, then by in-flight class.
+  wire c2u_hdr_payload_fifo_ok = cxl_in_is_posted_w      ? !c2u_pp_w_full : !c2u_npp_w_full;
+  wire c2u_ing_payload_fifo_ok = c2u_ing_payload_posted  ? !c2u_pp_w_full : !c2u_npp_w_full;
+
+  // Header payload length extraction (from widened header FIFOs)
+  wire [7:0] posted_payload_len;
+  wire [7:0] np_payload_len;
+  wire [7:0] u2c_payload_len;
+
+  wire [7:0] active_c2u_payload_len = arb_sel_final ? posted_payload_len : np_payload_len;
+
+  // Payload FIFO write data
+  wire [WIDTH-1:0] c2u_payload_w_data = cxl_in_data;
+  wire [WIDTH-1:0] u2c_payload_w_data = ucie_in_data;
+
   // --- CXL domain ingress gating (clk) ---
   wire posted_crd_avail;
   wire np_crd_avail;
-  assign cxl_in_ready  = bridge_open && (cxl_in_is_posted_w ?
-                         (!c2u_posted_w_full && posted_crd_avail) :
-                         (!c2u_np_w_full     && np_crd_avail));
+
+  assign cxl_in_ready  = !c2u_ing_is_payload ?
+                          (bridge_open && (cxl_in_is_posted_w ?
+                          (!c2u_posted_w_full && posted_crd_avail) :
+                          (!c2u_np_w_full     && np_crd_avail)) &&
+                          (c2u_hdr_has_payload ? c2u_hdr_payload_fifo_ok : 1'b1)) :
+                          c2u_ing_payload_fifo_ok;
 
   // --- UCIe domain ingress gating (ucie_clk) ---
   wire cpl_crd_avail;
-  assign ucie_in_ready = bridge_open_ucie && (!u2c_w_full && cpl_crd_avail);
 
-  // --- CXL domain egress (clk) ---
-  assign cxl_out_valid = !u2c_r_empty;
-  assign cxl_out_data  = u2c_rd_data;
+  assign ucie_in_ready = !u2c_ing_is_payload ?
+                          (bridge_open_ucie && (!u2c_w_full && cpl_crd_avail) &&
+                          (u2c_hdr_has_payload ? !u2c_payload_w_full : 1'b1)) :
+                          (!u2c_payload_w_full);
 
-  // --- UCIe domain egress arbiter (ucie_clk) ---
-  // Posted-priority: when both FIFOs have data, posted drains first.
-  // Lock the selection while a beat is in flight (valid && !ready).
-  reg  arb_locked_r;
-  reg  arb_sel_posted_r;
-
-  wire arb_sel_now   = !c2u_posted_r_empty;
-  wire arb_sel_final = arb_locked_r ? arb_sel_posted_r : arb_sel_now;
-
-  always @(posedge ucie_clk or negedge ucie_rst_n) begin
-    if (!ucie_rst_n) begin
-      arb_locked_r     <= 1'b0;
-      arb_sel_posted_r <= 1'b0;
+  // Ingress counters logic
+  always @(posedge clk or negedge clk_rst_n) begin
+    if (!clk_rst_n) begin
+      c2u_ing_payload_cnt    <= 8'h00;
+      c2u_ing_payload_posted <= 1'b0;
     end else begin
-      if (arb_locked_r) begin
-        if (ucie_out_ready)
-          arb_locked_r <= 1'b0;
-      end else if (ucie_out_valid && !ucie_out_ready) begin
-        arb_locked_r     <= 1'b1;
-        arb_sel_posted_r <= arb_sel_now;
+      if (!c2u_ing_is_payload && c2u_wr && c2u_hdr_has_payload) begin
+        c2u_ing_payload_cnt    <= c2u_hdr_payload_len;
+        c2u_ing_payload_posted <= cxl_in_is_posted_w;
+      end else if (c2u_ing_is_payload && c2u_payload_wr) begin
+        c2u_ing_payload_cnt <= c2u_ing_payload_cnt - 1'b1;
       end
     end
   end
 
-  assign ucie_out_valid = !c2u_posted_r_empty || !c2u_np_r_empty;
-  assign ucie_out_data  = arb_sel_final ? c2u_posted_rd_data : c2u_np_rd_data;
+  always @(posedge ucie_clk or negedge ucie_rst_n) begin
+    if (!ucie_rst_n) begin
+      u2c_ing_payload_cnt <= 8'h00;
+    end else begin
+      if (!u2c_ing_is_payload && u2c_wr && u2c_hdr_has_payload) begin
+        u2c_ing_payload_cnt <= u2c_hdr_payload_len;
+      end else if (u2c_ing_is_payload && u2c_payload_wr) begin
+        u2c_ing_payload_cnt <= u2c_ing_payload_cnt - 1'b1;
+      end
+    end
+  end
 
-  wire c2u_wr        = cxl_in_valid && cxl_in_ready;
-  wire c2u_posted_wr = c2u_wr &&  cxl_in_is_posted_w;
-  wire c2u_np_wr     = c2u_wr && !cxl_in_is_posted_w;
-  wire c2u_posted_rd = ucie_out_valid && ucie_out_ready &&  arb_sel_final;
-  wire c2u_np_rd     = ucie_out_valid && ucie_out_ready && !arb_sel_final;
-  wire u2c_wr        = ucie_in_valid && ucie_in_ready;
-  wire u2c_rd        = cxl_out_ready && cxl_out_valid;
+  // --- CXL domain egress (clk) ---
+  assign cxl_out_valid = !u2c_egr_is_payload ? !u2c_r_empty : !u2c_payload_r_empty;
+  assign cxl_out_data  = !u2c_egr_is_payload ? u2c_rd_data : u2c_payload_rd_data;
+
+  // --- UCIe domain egress arbiter (ucie_clk) ---
+  always @(posedge ucie_clk or negedge ucie_rst_n) begin
+    if (!ucie_rst_n) begin
+      arb_locked_r             <= 1'b0;
+      arb_sel_posted_r         <= 1'b0;
+      arb_sel_payload_posted_r <= 1'b0;
+      c2u_egr_payload_cnt      <= 8'h00;
+    end else begin
+      if (c2u_egr_is_payload) begin
+        // Draining a payload burst: decrement per beat consumed.
+        if (c2u_payload_rd)
+          c2u_egr_payload_cnt <= c2u_egr_payload_cnt - 1'b1;
+      end else if (arb_locked_r) begin
+        // Selection is frozen while a stalled header waits for the sink.
+        // Do NOT re-sample arb_sel_now here, or the presented data could
+        // change mid-stall and violate valid-stability.
+        if (ucie_out_ready) begin
+          if (active_c2u_payload_len > 0) begin
+            c2u_egr_payload_cnt      <= active_c2u_payload_len;
+            arb_sel_payload_posted_r <= arb_sel_final;
+          end
+          arb_locked_r <= 1'b0;
+        end
+      end else begin
+        // Unlocked header phase.
+        if (ucie_out_valid && ucie_out_ready) begin
+          if (active_c2u_payload_len > 0) begin
+            c2u_egr_payload_cnt      <= active_c2u_payload_len;
+            arb_sel_payload_posted_r <= arb_sel_final;
+          end
+        end else if (ucie_out_valid && !ucie_out_ready) begin
+          arb_locked_r     <= 1'b1;
+          arb_sel_posted_r <= arb_sel_now;
+        end
+      end
+    end
+  end
+
+  // U2C egress counter update (clk domain)
+  always @(posedge clk or negedge clk_rst_n) begin
+    if (!clk_rst_n) begin
+      u2c_egr_payload_cnt <= 8'h00;
+    end else begin
+      if (!u2c_egr_is_payload && u2c_rd) begin
+        if (u2c_payload_len > 0) begin
+          u2c_egr_payload_cnt <= u2c_payload_len;
+        end
+      end else if (u2c_egr_is_payload && u2c_payload_rd) begin
+        u2c_egr_payload_cnt <= u2c_egr_payload_cnt - 1'b1;
+      end
+    end
+  end
+
+  // Egress payload FIFO select follows the class latched when the header drained.
+  wire             c2u_egr_payload_empty = arb_sel_payload_posted_r ? c2u_pp_r_empty  : c2u_npp_r_empty;
+  wire [WIDTH-1:0] c2u_egr_payload_data  = arb_sel_payload_posted_r ? c2u_pp_rd_data  : c2u_npp_rd_data;
+
+  // Mux ucie_out outputs
+  assign ucie_out_valid = !c2u_egr_is_payload ?
+                          (arb_sel_final ? !c2u_posted_r_empty : !c2u_np_r_empty) :
+                          (!c2u_egr_payload_empty);
+  assign ucie_out_data  = !c2u_egr_is_payload ?
+                          (arb_sel_final ? c2u_posted_rd_data : c2u_np_rd_data) :
+                          c2u_egr_payload_data;
 
   // --- Credit counters and pulse syncs ---
 
@@ -396,33 +601,63 @@ module cxl_ucie_bridge #(
   // --- Async FIFOs ---
 
   async_fifo #(
-    .WIDTH (WIDTH),
+    .WIDTH (WIDTH + 8),
     .DEPTH (FIFO_DEPTH)
   ) u_c2u_posted (
     .w_clk   (clk),           .w_rst_n(clk_rst_n),
-    .w_en    (c2u_posted_wr), .w_data (c2u_wr_data), .w_full (c2u_posted_w_full),
+    .w_en    (c2u_posted_wr), .w_data ({c2u_hdr_payload_len, c2u_wr_data}), .w_full (c2u_posted_w_full),
     .r_clk   (ucie_clk),      .r_rst_n(ucie_rst_n),
-    .r_en    (c2u_posted_rd), .r_data (c2u_posted_rd_data), .r_empty(c2u_posted_r_empty)
+    .r_en    (c2u_posted_rd), .r_data ({posted_payload_len, c2u_posted_rd_data}), .r_empty(c2u_posted_r_empty)
   );
 
   async_fifo #(
-    .WIDTH (WIDTH),
+    .WIDTH (WIDTH + 8),
     .DEPTH (FIFO_DEPTH)
   ) u_c2u_np (
     .w_clk   (clk),        .w_rst_n(clk_rst_n),
-    .w_en    (c2u_np_wr), .w_data (c2u_wr_data), .w_full (c2u_np_w_full),
+    .w_en    (c2u_np_wr), .w_data ({c2u_hdr_payload_len, c2u_wr_data}), .w_full (c2u_np_w_full),
     .r_clk   (ucie_clk),   .r_rst_n(ucie_rst_n),
-    .r_en    (c2u_np_rd), .r_data (c2u_np_rd_data), .r_empty(c2u_np_r_empty)
+    .r_en    (c2u_np_rd), .r_data ({np_payload_len, c2u_np_rd_data}), .r_empty(c2u_np_r_empty)
+  );
+
+  async_fifo #(
+    .WIDTH (WIDTH + 8),
+    .DEPTH (FIFO_DEPTH)
+  ) u_u2c (
+    .w_clk   (ucie_clk), .w_rst_n(ucie_rst_n),
+    .w_en    (u2c_wr),   .w_data ({u2c_hdr_payload_len, u2c_wr_data}), .w_full (u2c_w_full),
+    .r_clk   (clk),      .r_rst_n(clk_rst_n),
+    .r_en    (u2c_rd),   .r_data ({u2c_payload_len, u2c_rd_data}),  .r_empty(u2c_r_empty)
   );
 
   async_fifo #(
     .WIDTH (WIDTH),
-    .DEPTH (FIFO_DEPTH)
-  ) u_u2c (
-    .w_clk   (ucie_clk), .w_rst_n(ucie_rst_n),
-    .w_en    (u2c_wr),   .w_data (u2c_wr_data), .w_full (u2c_w_full),
-    .r_clk   (clk),      .r_rst_n(clk_rst_n),
-    .r_en    (u2c_rd),   .r_data (u2c_rd_data),  .r_empty(u2c_r_empty)
+    .DEPTH (PAYLOAD_FIFO_DEPTH)
+  ) u_c2u_pp (
+    .w_clk   (clk),        .w_rst_n(clk_rst_n),
+    .w_en    (c2u_pp_wr),  .w_data (c2u_payload_w_data), .w_full (c2u_pp_w_full),
+    .r_clk   (ucie_clk),   .r_rst_n(ucie_rst_n),
+    .r_en    (c2u_pp_rd),  .r_data (c2u_pp_rd_data),     .r_empty(c2u_pp_r_empty)
+  );
+
+  async_fifo #(
+    .WIDTH (WIDTH),
+    .DEPTH (PAYLOAD_FIFO_DEPTH)
+  ) u_c2u_npp (
+    .w_clk   (clk),        .w_rst_n(clk_rst_n),
+    .w_en    (c2u_npp_wr), .w_data (c2u_payload_w_data), .w_full (c2u_npp_w_full),
+    .r_clk   (ucie_clk),   .r_rst_n(ucie_rst_n),
+    .r_en    (c2u_npp_rd), .r_data (c2u_npp_rd_data),    .r_empty(c2u_npp_r_empty)
+  );
+
+  async_fifo #(
+    .WIDTH (WIDTH),
+    .DEPTH (PAYLOAD_FIFO_DEPTH)
+  ) u_u2c_payload (
+    .w_clk   (ucie_clk),      .w_rst_n(ucie_rst_n),
+    .w_en    (u2c_payload_wr), .w_data (u2c_payload_w_data), .w_full (u2c_payload_w_full),
+    .r_clk   (clk),           .r_rst_n(clk_rst_n),
+    .r_en    (u2c_payload_rd), .r_data (u2c_payload_rd_data), .r_empty(u2c_payload_r_empty)
   );
 
 `ifdef FORMAL
@@ -500,11 +735,16 @@ module cxl_ucie_bridge #(
       assert (u2c_wr_data[PKT_KIND_MSB:PKT_KIND_LSB] == CXL_PKT_KIND_INVALID);
   end
 
-  // Phase 4: link gating (clk domain — ingress gating is combinational).
+  // Phase 4/7: link gating (clk domain — ingress gating is combinational).
+  // When closed, new headers are blocked, but an already-admitted write's
+  // payload beats must still be accepted so the in-flight packet can drain
+  // (otherwise a partial packet would stall drain forever).
   always @(*) begin
     if (!bridge_open) begin
-      assert (cxl_in_ready  == 1'b0);
-      assert (ucie_in_ready == 1'b0 || bridge_open_ucie == 1'b1);
+      if (!c2u_ing_is_payload)
+        assert (cxl_in_ready  == 1'b0);
+      if (!u2c_ing_is_payload)
+        assert (ucie_in_ready == 1'b0 || bridge_open_ucie == 1'b1);
     end
   end
 
@@ -518,9 +758,10 @@ module cxl_ucie_bridge #(
     end
   end
 
-  // Ordering domain routing (clk domain, combinational).
+  // Ordering domain routing (clk domain, combinational). Header phase only;
+  // during a payload beat the data goes to a payload FIFO, not a header FIFO.
   always @(*) begin
-    if (cxl_in_valid && cxl_in_ready) begin
+    if (cxl_in_valid && cxl_in_ready && !c2u_ing_is_payload) begin
       if (cxl_in_is_posted_w)
         assert (c2u_posted_wr && !c2u_np_wr);
       else
@@ -528,14 +769,16 @@ module cxl_ucie_bridge #(
     end
   end
 
-  // Arbiter correctness (ucie_clk domain).
+  // Arbiter correctness (ucie_clk domain). These describe header-phase
+  // arbitration; during a payload burst arb_sel_final tracks the latched
+  // payload class instead, so guard on !c2u_egr_is_payload.
   always_ff @(posedge ucie_clk) begin
     if (ucie_rst_n) begin
-      if (ucie_out_valid && ucie_out_ready) begin
+      if (ucie_out_valid && ucie_out_ready && !c2u_egr_is_payload) begin
         assert (c2u_posted_rd == arb_sel_final);
         assert (c2u_np_rd     == !arb_sel_final);
       end
-      if (!arb_locked_r && !c2u_posted_r_empty)
+      if (!c2u_egr_is_payload && !arb_locked_r && !c2u_posted_r_empty)
         assert (arb_sel_final == 1'b1);
     end
   end
