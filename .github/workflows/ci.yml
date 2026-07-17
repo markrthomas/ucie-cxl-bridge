@@ -135,3 +135,25 @@ jobs:
           print("wrote", out)
           PY
           sby -f reset_drain_ci.sby
+
+      - name: SymbiYosys formal (bmc + cover, payload_fifo)
+        working-directory: verification/formal
+        run: |
+          set -euo pipefail
+          test -r "${GITHUB_WORKSPACE}/src/sync_fifo.v"
+          python3 <<'PY'
+          import os
+          from pathlib import Path
+          root = Path(os.environ["GITHUB_WORKSPACE"])
+          assert (root / "src" / "sync_fifo.v").is_file()
+          src = root / "verification" / "formal" / "payload_fifo.sby"
+          out = root / "verification" / "formal" / "payload_fifo_ci.sby"
+          text = src.read_text()
+          new = text.replace("../../../../src", str(root / "src"))
+          new = new.replace("../../payload_fifo_props.sv", str(root / "verification" / "formal" / "payload_fifo_props.sv"))
+          assert new != text, "no path substitution made in payload_fifo.sby"
+          out.write_text(new)
+          print("wrote", out)
+          PY
+          sby -f payload_fifo_ci.sby
+

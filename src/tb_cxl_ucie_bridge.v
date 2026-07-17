@@ -425,6 +425,54 @@ module tb_cxl_ucie_bridge;
     end
   endtask
 
+  reg [W-1:0] tc_cxl;
+  reg [W-1:0] tc_ucie;
+  reg [W-1:0] exp_ucie;
+  reg [W-1:0] exp_cxl;
+
+  task automatic test_c2u;
+    input [W-1:0] pkt;
+    begin
+      tc_cxl = pkt;
+      exp_ucie = expect_ucie_from_cxl(pkt);
+      @(posedge clk);
+      cxl_in_data = tc_cxl;
+      cxl_in_valid = 1'b1;
+      ucie_out_ready = 1'b1;
+      @(posedge clk);
+      while (!(cxl_in_valid && cxl_in_ready)) @(posedge clk);
+      cxl_in_valid = 1'b0;
+      wait (ucie_out_valid);
+      if (ucie_out_data !== exp_ucie) begin
+        $display("FAIL: decode_table C2U mismatch: sent_cxl=%h exp_ucie=%h got_ucie=%h", tc_cxl, exp_ucie, ucie_out_data);
+        $finish(1);
+      end
+      @(posedge ucie_clk); #1;
+    end
+  endtask
+
+  task automatic test_u2c;
+    input [W-1:0] pkt;
+    begin
+      tc_ucie = pkt;
+      tc_ucie[PKT_MISC_MSB:PKT_MISC_LSB] = 8'h00;
+      tc_ucie[PKT_MISC_MSB:PKT_MISC_LSB] = bridge_checksum(tc_ucie);
+      exp_cxl = expect_cxl_from_ucie(tc_ucie);
+      @(posedge clk);
+      ucie_in_data = tc_ucie;
+      ucie_in_valid = 1'b1;
+      cxl_out_ready = 1'b1;
+      @(posedge ucie_clk);
+      while (!(ucie_in_valid && ucie_in_ready)) @(posedge ucie_clk);
+      ucie_in_valid = 1'b0;
+      wait (cxl_out_valid); @(posedge clk);
+      if (cxl_out_data !== exp_cxl) begin
+        $display("FAIL: decode_table U2C mismatch: sent_ucie=%h exp_cxl=%h got_cxl=%h", tc_ucie, exp_cxl, cxl_out_data);
+        $finish(1);
+      end
+    end
+  endtask
+
   initial begin
     forever begin
       @(posedge ucie_clk);
@@ -796,6 +844,48 @@ module tb_cxl_ucie_bridge;
       end
 
       $display("PASS smoke error_injection");
+    end
+
+    // --- Smoke 5.5: opcode decode table unit test ---
+    begin : blk_decode_table
+      // --- C2U Tests ---
+      $display("INFO: running decode table unit tests (CXL -> UCIe)...");
+      test_c2u(pack_cxl_io_req(CXL_IO_OP_CFG_RD, 8'h01, 16'h1111, 8'h01, 8'h11, 8'h0a));
+      test_c2u(pack_cxl_io_req(CXL_IO_OP_CFG_WR, 8'h02, 16'h2222, 8'h02, 8'h22, 8'h0b));
+      test_c2u(pack_cxl_io_req(CXL_IO_OP_MEM_RD, 8'h03, 16'h3333, 8'h03, 8'h33, 8'h0c));
+      test_c2u(pack_cxl_io_req(CXL_IO_OP_MEM_WR, 8'h04, 16'h4444, 8'h04, 8'h44, 8'h0d));
+      
+      test_c2u(pack_cxl_mem_rd(CXL_MEM_OP_RD, 8'h05, 16'h5555, 8'h05, 8'h55, 8'h0e));
+      test_c2u(pack_cxl_mem_rd(CXL_MEM_OP_RD_DATA, 8'h06, 16'h6666, 8'h06, 8'h66, 8'h0f));
+      
+      test_c2u(pack_cxl_mem_wr(CXL_MEM_OP_WR, 8'h07, 16'h7777, 8'h07, 8'h77, 8'h10));
+      test_c2u(pack_cxl_mem_wr(CXL_MEM_OP_WR_DATA, 8'h08, 16'h8888, 8'h08, 8'h88, 8'h11));
+      
+      test_c2u(pack_cxl_cache_rd(CXL_CACHE_OP_RD, 8'h09, 16'h9999, 8'h09, 8'h99, 8'h12));
+      test_c2u(pack_cxl_cache_rd(CXL_CACHE_OP_RD_DATA, 8'h0a, 16'haaaa, 8'h0a, 8'haa, 8'h13));
+      
+      test_c2u(pack_cxl_cache_wr(CXL_CACHE_OP_WR, 8'h0b, 16'hbbbb, 8'h0b, 8'hbb, 8'h14));
+      test_c2u(pack_cxl_cache_wr(CXL_CACHE_OP_WR_DATA, 8'h0c, 16'hcccc, 8'h0c, 8'hcc, 8'h15));
+
+      test_c2u({CXL_PKT_KIND_INVALID, 60'h000000000000000});
+
+      // --- U2C Tests ---
+      $display("INFO: running decode table unit tests (UCIe -> CXL)...");
+      test_u2c(pack_ucie_ad_cpl(UCIE_CPL_SC, 8'h20, 16'h0010, 8'h01, 8'h90, 8'h00, 8'h00));
+      test_u2c(pack_ucie_ad_cpl(UCIE_CPL_UR, 8'h21, 16'h0020, 8'h02, 8'h91, 8'h04, 8'h00));
+      test_u2c(pack_ucie_ad_cpl(UCIE_CPL_CA, 8'h22, 16'h0030, 8'h03, 8'h92, 8'h08, 8'h00));
+      
+      test_u2c(pack_ucie_mem_cpl(UCIE_CPL_SC, 8'h23, 16'h0040, 8'h04, 8'h93, 8'h0c, 8'h00));
+      test_u2c(pack_ucie_mem_cpl(UCIE_CPL_UR, 8'h24, 16'h0050, 8'h05, 8'h94, 8'h10, 8'h00));
+      test_u2c(pack_ucie_mem_cpl(UCIE_CPL_CA, 8'h25, 16'h0060, 8'h06, 8'h95, 8'h14, 8'h00));
+      
+      test_u2c(pack_ucie_cache_cpl(UCIE_CPL_SC, 8'h26, 16'h0070, 8'h07, 8'h96, 8'h18, 8'h00));
+      test_u2c(pack_ucie_cache_cpl(UCIE_CPL_UR, 8'h27, 16'h0080, 8'h08, 8'h97, 8'h1c, 8'h00));
+      test_u2c(pack_ucie_cache_cpl(UCIE_CPL_CA, 8'h28, 16'h0090, 8'h09, 8'h98, 8'h20, 8'h00));
+
+      test_u2c({4'h0, 60'h000000000000000});
+
+      $display("PASS smoke decode_table");
     end
 
     // --- Smoke 6: clock ratio 2:1 (ucie_clk faster: 5 ns period = 200 MHz) ---

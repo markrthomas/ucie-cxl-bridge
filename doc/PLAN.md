@@ -105,13 +105,13 @@ partner.
 
 Implement in this order:
 
-1. **Payload FIFO formal property file** (`verification/formal/payload_fifo.sby`)
+1. **[DONE] Payload FIFO formal property file** (`verification/formal/payload_fifo.sby`)
    — can be written against `sync_fifo` before Phase 7 RTL changes land.
 2. **UVM scoreboard wiring** — complete the existing stub before expanding random
    sequences (prevents coverage false-positives).
-3. **CI directed test job** — add a GitHub Actions job that runs
+3. **[DONE] CI directed test job** — add a GitHub Actions job that runs
    `make -C verification/directed stress` (Verilator, no VCS dependency).
-4. **Opcode decode table unit test** — directed test that hits every opcode in
+4. **[DONE] Opcode decode table unit test** — directed test that hits every opcode in
    `cxl_ucie_bridge_defs.vh`; catches decode regressions cheaply.
 5. **Phase 7 payload transport** (multi-beat).
 6. **Phase 8 UVM closure** (constrained-random).
