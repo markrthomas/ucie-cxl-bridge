@@ -326,11 +326,13 @@ class CXLDriver:
             await self._handshake_in(beat, timeout)
         dut.cxl_in_valid.value = 0
 
-    async def recv(self, timeout=64):
+    async def recv(self, timeout=64, payload_beats=None):
         """Consume a CXL completion header (and drain its payload beats).
 
-        Holds ready high and samples each accepted beat in the ReadOnly phase so
-        every valid&&ready edge is counted exactly once (header, then payload)."""
+        Holds ready high and records one beat per accepted (valid&&ready) edge.
+        payload_beats, when given, is the exact number of trailing payload beats
+        (the caller knows it from the sent packet); otherwise it is inferred
+        from the completion header."""
         dut, clk = self.dut, self.clk
         dut.cxl_out_ready.value = 1
         beats = []
@@ -341,7 +343,8 @@ class CXLDriver:
             if int(dut.cxl_out_valid.value) == 1:
                 beats.append(int(dut.cxl_out_data.value))
                 if need is None:
-                    need = 1 + _cxl_out_payload_len(beats[0])
+                    need = 1 + (payload_beats if payload_beats is not None
+                                else _cxl_out_payload_len(beats[0]))
                 idle = 0
             else:
                 idle += 1
@@ -384,14 +387,14 @@ class UCIeDriver:
             await self._handshake_in(beat, timeout)
         dut.ucie_in_valid.value = 0
 
-    async def recv(self, timeout=64):
+    async def recv(self, timeout=64, payload_beats=None):
         """Consume a UCIe egress header (and drain its payload beats).
 
-        Holds ready high and records one beat per accepted (valid&&ready) edge.
-        The C2U egress presents its FWFT data through the arbiter FSM, so the
-        settled value must be sampled in the ReadOnly phase to line up each beat
-        with the edge that consumes it (the U2C egress, being direct, samples in
-        the active phase instead — see CXLDriver.recv)."""
+        Holds ready high and records one beat per accepted (valid&&ready) edge,
+        sampled in the active region right after the edge (pre-NBA, i.e. the beat
+        present during the cycle being consumed). payload_beats, when given,
+        overrides header-based inference (resolves the io read/write ambiguity,
+        where both map to the same UCIe message type)."""
         dut, clk = self.dut, self.ucie_clk
         dut.ucie_out_ready.value = 1
         beats = []
@@ -399,17 +402,16 @@ class UCIeDriver:
         idle  = 0
         while need is None or len(beats) < need:
             await RisingEdge(clk)
-            await ReadOnly()
             if int(dut.ucie_out_valid.value) == 1:
                 beats.append(int(dut.ucie_out_data.value))
                 if need is None:
-                    need = 1 + _ucie_out_payload_len(beats[0])
+                    need = 1 + (payload_beats if payload_beats is not None
+                                else _ucie_out_payload_len(beats[0]))
                 idle = 0
             else:
                 idle += 1
                 if idle > timeout:
                     raise AssertionError("Timeout waiting for ucie_out beat")
-        await RisingEdge(clk)   # leave the ReadOnly phase before driving ready
         dut.ucie_out_ready.value = 0
         self.last_payload = beats[1:]
         return beats[0]

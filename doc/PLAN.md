@@ -53,9 +53,17 @@
 (`bridge_scoreboard` + `bridge_predict`); constrained-random *legal* sequences
 (`bridge_cxl_seq` / `bridge_ucie_seq`, writes expand to header+payload beats);
 base test runs both directions + drains; functional covergroups added
-(kind×payload-len, kind×status). Remaining: measure/close coverage ≥95%,
-dedicated backpressure sequences, and a 10k-transaction run — all require a
-UVM 1.2 simulator (VCS/Questa); not runnable with the OSS toolchain here.
+(kind×payload-len, kind×status). Remaining for the UVM env: measure/close
+coverage ≥95%, dedicated backpressure sequences, and a 10k-transaction run —
+all require a UVM 1.2 simulator (VCS/Questa); not runnable with the OSS
+toolchain here.
+
+The **OSS-runnable equivalent** lives in `verification/cocotb`
+(`test_random_traffic`): constrained-random legal traffic both directions with
+payload expansion, per-transaction translation + payload-content checks, and
+functional-coverage closure over kind × direction × status × payload-length
+bucket. Note: cocotb must phase-shift `ucie_clk` off `clk` (quarter-period), or
+the async-FIFO Gray-pointer CDC syncs race and intermittently stall.
 
 ### Updates
 
