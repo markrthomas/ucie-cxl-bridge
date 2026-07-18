@@ -1,0 +1,26 @@
+[tasks]
+bmc
+
+[options]
+bmc: mode bmc
+bmc: depth 16
+multiclock on
+
+[engines]
+smtbmc
+
+[script]
+# Phase 9: prove the bridge's credit-safety assertions hold under the external
+# credit-advertisement model (EXT_CREDIT=1), where each pool starts empty and
+# gains credits only from the *_grant sidebands. The in-RTL FORMAL asserts
+# (c2u_posted_wr -> posted_crd_avail, etc.) then mean "never issue a packet when
+# the granted-credit count is zero". Yosys cwd is <taskdir>/src.
+read_verilog -sv -DFORMAL -I../../../../src ../../../../src/async_fifo.v
+read_verilog -sv -DFORMAL -I../../../../src ../../../../src/cdc_sync.v
+read_verilog -sv -DFORMAL -I../../../../src ../../../../src/reset_sync.v
+read_verilog -sv -DFORMAL -I../../../../src ../../../../src/credit_counter.v
+read_verilog -sv -DFORMAL -I../../../../src ../../../../src/credit_pulse_sync.v
+read_verilog -sv -DFORMAL -I../../../../src ../../../../src/reset_drain.v
+read_verilog -sv -DFORMAL -I../../../../src ../../../../src/cxl_ucie_bridge.v
+chparam -set EXT_CREDIT 1 cxl_ucie_bridge
+prep -top cxl_ucie_bridge

@@ -1,9 +1,14 @@
 // Credit counter: parameterized 0..CREDITS counter for per-direction flow control.
-// consume: spend a credit (no-op when at 0). ret: return a credit (no-op when at max).
+// consume: spend a credit (no-op when at 0). ret: return/grant a credit (no-op at max).
 // Simultaneous consume + ret: no net change.
+//
+// INIT sets the reset value: INIT=CREDITS (default) models a local loopback pool
+// that starts full; INIT=0 models a received-grant accumulator (Phase 9) that
+// starts empty and only gains credits from external grants on `ret`.
 
 module credit_counter #(
-  parameter integer CREDITS = 8
+  parameter integer CREDITS = 8,
+  parameter integer INIT    = CREDITS
 ) (
   input  wire clk,
   input  wire rst_n,
@@ -14,6 +19,7 @@ module credit_counter #(
 
   localparam integer CNT_W  = $clog2(CREDITS + 1);
   localparam [CNT_W-1:0] CNT_MAX = CREDITS[CNT_W-1:0];
+  localparam [CNT_W-1:0] CNT_INIT = INIT[CNT_W-1:0];
 
   reg [CNT_W-1:0] cnt;
 
@@ -21,7 +27,7 @@ module credit_counter #(
 
   always @(posedge clk or negedge rst_n) begin
     if (!rst_n)
-      cnt <= CNT_MAX;
+      cnt <= CNT_INIT;
     else begin
       if (consume && !ret && available)
         cnt <= cnt - 1'b1;

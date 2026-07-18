@@ -15,7 +15,11 @@ module cxl_ucie_bridge #(
   parameter integer PAYLOAD_FIFO_DEPTH = 16,
   parameter integer POSTED_CREDITS = 8,
   parameter integer NP_CREDITS     = 8,
-  parameter integer CPL_CREDITS    = 8
+  parameter integer CPL_CREDITS    = 8,
+  // Phase 9: 0 = local loopback credit pools (start full, self-return);
+  //          1 = external credit-advertisement (accumulators start at 0 and
+  //              gain credits only from the *_grant sidebands).
+  parameter integer EXT_CREDIT     = 0
 ) (
   input  wire                  clk,
   input  wire                  ucie_clk,    // UCIe domain clock
@@ -37,7 +41,16 @@ module cxl_ucie_bridge #(
   // Phase 4: link readiness and error injection
   input  wire                  link_up,
   input  wire                  err_inj_en,
-  output wire                  drain_done
+  output wire                  drain_done,
+  // Phase 9: credit-advertisement sideband (used only when EXT_CREDIT=1).
+  // Grants (partner -> bridge) add credits to the per-pool accumulators;
+  // returns (bridge -> partner) pulse when a packet drains out of the bridge.
+  input  wire                  posted_grant,          // clk domain
+  input  wire                  np_grant,              // clk domain
+  input  wire                  cpl_grant,             // ucie_clk domain
+  output wire                  posted_credit_return,  // clk domain
+  output wire                  np_credit_return,      // clk domain
+  output wire                  cpl_credit_return      // ucie_clk domain
 );
 
   generate
@@ -567,36 +580,58 @@ module cxl_ucie_bridge #(
                           c2u_egr_payload_data;
 
   // --- Credit counters and pulse syncs ---
+  //
+  // Each pool's increment source depends on EXT_CREDIT:
+  //   0 (local): the pool returns its own credit when the far side drains
+  //              (egress read pulse, synced across the CDC), starting full.
+  //   1 (external): the pool starts empty and only gains credits from the
+  //              partner's *_grant pulse; the egress-drain pulse is exposed on
+  //              *_credit_return so the partner can replenish.
+  // The *_credit_return outputs are driven in both modes (harmless when unused).
+  localparam integer POSTED_INIT = (EXT_CREDIT != 0) ? 0 : POSTED_CREDITS;
+  localparam integer NP_INIT     = (EXT_CREDIT != 0) ? 0 : NP_CREDITS;
+  localparam integer CPL_INIT    = (EXT_CREDIT != 0) ? 0 : CPL_CREDITS;
 
+  // Egress-drain pulses (synced into each pool's domain), declared before use.
   wire posted_ret_clk;
+  wire np_ret_clk;
+  wire cpl_ret_ucie;
+
+  /* verilator lint_off UNUSEDSIGNAL */  // *_grant unread when EXT_CREDIT=0
+  wire posted_crd_inc = (EXT_CREDIT != 0) ? posted_grant : posted_ret_clk;
+  wire np_crd_inc     = (EXT_CREDIT != 0) ? np_grant     : np_ret_clk;
+  wire cpl_crd_inc    = (EXT_CREDIT != 0) ? cpl_grant    : cpl_ret_ucie;
+  /* verilator lint_on UNUSEDSIGNAL */
+
   credit_pulse_sync u_posted_ret_sync (
     .src_clk(ucie_clk), .src_rst_n(ucie_rst_n), .src_pulse(c2u_posted_rd),
     .dst_clk(clk),      .dst_rst_n(clk_rst_n),   .dst_pulse(posted_ret_clk)
   );
-  credit_counter #(.CREDITS(POSTED_CREDITS)) u_posted_crd (
-    .clk(clk), .rst_n(clk_rst_n), .consume(c2u_posted_wr), .ret(posted_ret_clk),
+  credit_counter #(.CREDITS(POSTED_CREDITS), .INIT(POSTED_INIT)) u_posted_crd (
+    .clk(clk), .rst_n(clk_rst_n), .consume(c2u_posted_wr), .ret(posted_crd_inc),
     .available(posted_crd_avail)
   );
+  assign posted_credit_return = posted_ret_clk;
 
-  wire np_ret_clk;
   credit_pulse_sync u_np_ret_sync (
     .src_clk(ucie_clk), .src_rst_n(ucie_rst_n), .src_pulse(c2u_np_rd),
     .dst_clk(clk),      .dst_rst_n(clk_rst_n),   .dst_pulse(np_ret_clk)
   );
-  credit_counter #(.CREDITS(NP_CREDITS)) u_np_crd (
-    .clk(clk), .rst_n(clk_rst_n), .consume(c2u_np_wr), .ret(np_ret_clk),
+  credit_counter #(.CREDITS(NP_CREDITS), .INIT(NP_INIT)) u_np_crd (
+    .clk(clk), .rst_n(clk_rst_n), .consume(c2u_np_wr), .ret(np_crd_inc),
     .available(np_crd_avail)
   );
+  assign np_credit_return = np_ret_clk;
 
-  wire cpl_ret_ucie;
   credit_pulse_sync u_cpl_ret_sync (
     .src_clk(clk),      .src_rst_n(clk_rst_n),   .src_pulse(u2c_rd),
     .dst_clk(ucie_clk), .dst_rst_n(ucie_rst_n), .dst_pulse(cpl_ret_ucie)
   );
-  credit_counter #(.CREDITS(CPL_CREDITS)) u_cpl_crd (
-    .clk(ucie_clk), .rst_n(ucie_rst_n), .consume(u2c_wr), .ret(cpl_ret_ucie),
+  credit_counter #(.CREDITS(CPL_CREDITS), .INIT(CPL_INIT)) u_cpl_crd (
+    .clk(ucie_clk), .rst_n(ucie_rst_n), .consume(u2c_wr), .ret(cpl_crd_inc),
     .available(cpl_crd_avail)
   );
+  assign cpl_credit_return = cpl_ret_ucie;
 
   // --- Async FIFOs ---
 

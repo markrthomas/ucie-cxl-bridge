@@ -42,13 +42,17 @@ lint:
 sim:
 	$(MAKE) -C verification/directed sim
 
+# Phase 9 external credit-advertisement directed test.
+credit:
+	$(MAKE) -C verification/directed credit
+
 # Icarus simulation with heavy backpressure stress.
 stress:
 	$(MAKE) -C verification/directed stress
 
 # fast CI gate.
-regress: lint sim
-	@echo "[REGRESS] lint + directed sim PASSED"
+regress: lint sim credit
+	@echo "[REGRESS] lint + directed sim + credit PASSED"
 
 # coverage: Verilator --coverage build + run; emits sim/coverage.info (lcov format).
 coverage:

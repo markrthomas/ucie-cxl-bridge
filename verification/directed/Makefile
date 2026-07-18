@@ -9,9 +9,13 @@ VCD       := $(BUILD_DIR)/waves.vcd
 SOURCES := $(SRC_DIR)/async_fifo.v $(SRC_DIR)/credit_counter.v $(SRC_DIR)/credit_pulse_sync.v $(SRC_DIR)/reset_drain.v $(SRC_DIR)/cdc_sync.v $(SRC_DIR)/reset_sync.v $(SRC_DIR)/cxl_ucie_bridge.v $(SRC_DIR)/cxl_ucie_bridge_chk.v $(SRC_DIR)/cxl_ucie_bridge_payload_chk.v $(SRC_DIR)/tb_cxl_ucie_bridge.v
 OUT     := $(BUILD_DIR)/tb.out
 
-.PHONY: all run sim compile stress vcd gtkwave lint clean
+# Phase 9 credit-advertisement directed test (EXT_CREDIT=1).
+CREDIT_SOURCES := $(SRC_DIR)/async_fifo.v $(SRC_DIR)/credit_counter.v $(SRC_DIR)/credit_pulse_sync.v $(SRC_DIR)/reset_drain.v $(SRC_DIR)/cdc_sync.v $(SRC_DIR)/reset_sync.v $(SRC_DIR)/cxl_ucie_bridge.v $(SRC_DIR)/tb_credit_grant.v
+CREDIT_OUT     := $(BUILD_DIR)/tb_credit.out
 
-all: run
+.PHONY: all run sim compile stress credit vcd gtkwave lint clean
+
+all: run credit
 
 compile: $(OUT)
 
@@ -21,6 +25,13 @@ run sim: compile
 # Default smoke + moderate stress; this adds a second phase with harsh sink backpressure.
 stress: compile
 	vvp $(OUT) +stress
+
+# Phase 9 external credit-advertisement directed test.
+credit: $(CREDIT_OUT)
+	vvp $(CREDIT_OUT)
+
+$(CREDIT_OUT): $(CREDIT_SOURCES) | $(BUILD_DIR)
+	iverilog -g2005-sv -I$(SRC_DIR) -o $@ $(CREDIT_SOURCES)
 
 # Regenerate simulation and write $(VCD) (run from this directory so path matches $dumpfile)
 vcd: compile

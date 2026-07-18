@@ -6,9 +6,9 @@
 
 SBY ?= sby
 
-.PHONY: all sync_fifo reset_drain cxl_ucie_bridge payload_fifo clean
+.PHONY: all sync_fifo reset_drain cxl_ucie_bridge payload_fifo credit_grant clean
 
-all: sync_fifo reset_drain cxl_ucie_bridge payload_fifo
+all: sync_fifo reset_drain cxl_ucie_bridge payload_fifo credit_grant
 	@echo "[FORMAL] All SymbiYosys checks passed."
 
 sync_fifo:
@@ -27,10 +27,15 @@ payload_fifo:
 	$(SBY) -f payload_fifo.sby
 	@echo "[FORMAL] payload_fifo: PASS"
 
+credit_grant:
+	$(SBY) -f credit_grant.sby
+	@echo "[FORMAL] credit_grant: PASS"
+
 clean:
 	rm -rf sync_fifo_bmc sync_fifo_cover \
 	       reset_drain_bmc reset_drain_cover \
 	       cxl_ucie_bridge_bmc cxl_ucie_bridge_cover \
 	       payload_fifo_bmc payload_fifo_cover \
-	       sync_fifo_ci.sby reset_drain_ci.sby cxl_ucie_bridge_ci.sby payload_fifo_ci.sby
+	       credit_grant_bmc \
+	       sync_fifo_ci.sby reset_drain_ci.sby cxl_ucie_bridge_ci.sby payload_fifo_ci.sby credit_grant_ci.sby
 

@@ -157,3 +157,23 @@ jobs:
           PY
           sby -f payload_fifo_ci.sby
 
+      - name: SymbiYosys formal (bmc, credit_grant / EXT_CREDIT=1)
+        working-directory: verification/formal
+        run: |
+          set -euo pipefail
+          test -r "${GITHUB_WORKSPACE}/src/cxl_ucie_bridge.v"
+          python3 <<'PY'
+          import os
+          from pathlib import Path
+          root = Path(os.environ["GITHUB_WORKSPACE"])
+          assert (root / "src" / "cxl_ucie_bridge.v").is_file()
+          src = root / "verification" / "formal" / "credit_grant.sby"
+          out = root / "verification" / "formal" / "credit_grant_ci.sby"
+          text = src.read_text()
+          new = text.replace("../../../../src", str(root / "src"))
+          assert new != text, "no path substitution made in credit_grant.sby"
+          out.write_text(new)
+          print("wrote", out)
+          PY
+          sby -f credit_grant_ci.sby
+

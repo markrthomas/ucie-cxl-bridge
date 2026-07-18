@@ -41,7 +41,14 @@ module top;
     .cxl_out_ready(b_if.cxl_out_ready),
     .link_up(b_if.link_up),
     .err_inj_en(b_if.err_inj_en),
-    .drain_done(b_if.drain_done)
+    .drain_done(b_if.drain_done),
+    // Phase 9 credit-advertisement sideband: unused here (EXT_CREDIT defaults 0).
+    .posted_grant(1'b0),
+    .np_grant(1'b0),
+    .cpl_grant(1'b0),
+    .posted_credit_return(),
+    .np_credit_return(),
+    .cpl_credit_return()
   );
 
   initial begin

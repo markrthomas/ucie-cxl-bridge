@@ -92,6 +92,17 @@ the async-FIFO Gray-pointer CDC syncs race and intermittently stall.
 advertisement handshake so the bridge can interoperate with an external flow-control
 partner.
 
+**Status (landed):** `EXT_CREDIT` parameter (default 0 = legacy local loopback,
+fully backward-compatible) selects external credit advertisement. When 1, each
+pool (posted/NP/cpl) is a received-grant accumulator starting empty, gaining
+credits only from the `*_grant` sideband inputs; `*_credit_return` outputs pulse
+on egress drain. Directed test `make -C verification/directed credit`
+(`tb_credit_grant`) verifies throttle-at-zero, issue-exactly-N-granted, and
+release for both a clk-domain pool (posted) and a ucie_clk-domain pool (cpl).
+Formal `credit_grant.sby` (EXT_CREDIT=1) proves the bridge never issues a packet
+when the granted-credit count is zero. Remaining: single-pulse grants only (no
+multi-credit grant count yet); a full external-partner stress scenario.
+
 ### RTL updates
 
 - Define a credit-advertisement channel: `credit_grant` (upstream → bridge) and
