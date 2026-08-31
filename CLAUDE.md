@@ -16,4 +16,6 @@ V=~/verilator/bin/verilator ; U=~/verilator/test_regress/t/uvm
 ( unset VERILATOR_ROOT; make -C verification/uvm/vlt lint   VERILATOR=$V UVM_HOME=$U )
 ( unset VERILATOR_ROOT; make -C verification/uvm/vlt smoke VERILATOR=$V UVM_HOME=$U )
 ```
-Details: `verification/uvm/vlt/README.md`.
+In an OSS-off shell (`OSS_CAD=0` / `oss-cad-off`) Verilator 5.050 is on `PATH`,
+`VERILATOR_ROOT` is unset, and `UVM_HOME` is exported — the vars/`unset` above are
+then optional. Details: `verification/uvm/vlt/README.md`.
