@@ -110,6 +110,9 @@ make lint
 
 The current RTL implements granular protocol opcodes, multi-beat payload transport (each write header followed by `ceil(length/2)` payload beats in dedicated per-direction payload FIFOs; C2U split posted/NP to preserve per-class ordering under the reordering egress arbiter), and a selectable credit model: local loopback pools by default, or external credit advertisement (`EXT_CREDIT=1`) with per-pool grant/return sidebands. It is verified for structural integrity and logical correctness across varied clock ratios and traffic patterns.
 
+## Status: Planning Schedule
+- **Date targeted is about Oct 2026**
+
 ## Known Limits
 
 | Area | Current Limit |
