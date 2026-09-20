@@ -15,7 +15,7 @@ BRIDGE_SRCS := src/async_fifo.v src/cdc_sync.v src/credit_counter.v \
                src/cxl_ucie_bridge.v
 COV_DIR := sim/obj_dir_cov
 
-.PHONY: help lint sim regress stress coverage formal ci cocotb clean
+.PHONY: help lint sim regress stress coverage formal ci cocotb test check clean
 
 help:
 	@echo "ucie-cxl-bridge — common targets"
@@ -23,11 +23,17 @@ help:
 	@echo "  make lint      — Verilator --lint-only on all RTL modules"
 	@echo "  make sim       — Icarus directed simulation (default + smoke)"
 	@echo "  make stress    — Icarus simulation with heavy backpressure stress"
+	@echo "  make cocotb    — cocotb functional DV tier (alias: make test)"
+	@echo "  make test      — alias for make cocotb"
+	@echo "  make check     — lint + sim (light local gate)"
 	@echo "  make regress   — lint + sim (fast CI gate)"
 	@echo "  make coverage  — Verilator C++ coverage (stub; see doc/PLAN.md)"
 	@echo "  make formal    — SymbiYosys BMC + cover (sync_fifo, reset_drain, bridge)"
 	@echo "  make ci        — regress + formal (comprehensive)"
 	@echo "  make clean     — remove simulation build artifacts"
+	@echo ""
+	@echo "  See DV_STANDARDS.md for the common target vocabulary shared"
+	@echo "  across this maintainer's RTL/DV repos."
 	@echo ""
 	@echo "  Subdirectory targets:"
 	@echo "    make -C verification/directed [lint|sim|stress|vcd|gtkwave|clean]"
@@ -49,6 +55,10 @@ credit:
 # Icarus simulation with heavy backpressure stress.
 stress:
 	$(MAKE) -C verification/directed stress
+
+# light local gate: lint + sim.
+check: lint sim
+	@echo "[CHECK] lint + directed sim PASSED"
 
 # fast CI gate.
 regress: lint sim credit
@@ -83,6 +93,9 @@ ci: regress formal
 
 cocotb:
 	$(MAKE) -C verification/cocotb
+
+# cross-repo alias for cocotb.
+test: cocotb
 
 clean:
 	$(MAKE) -C verification/directed clean
