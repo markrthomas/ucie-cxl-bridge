@@ -105,6 +105,7 @@ make lint
 - **Design Specification**: [doc/design-spec.md](doc/design-spec.md) - Detailed architecture, opcodes, and FSM logic.
 - **Verification Plan**: [verification/uvm/README.md](verification/uvm/README.md) - UVM environment and methodology.
 - **Contributing**: [CONTRIBUTING.md](CONTRIBUTING.md) - Setup guide and CI details.
+- **DV Standards**: [DV_STANDARDS.md](DV_STANDARDS.md) - Common `make` target vocabulary shared across this maintainer's RTL/DV repos.
 
 ## Status: Phase 9 (Credit advertisement)
 
