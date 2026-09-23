@@ -15,7 +15,7 @@ BRIDGE_SRCS := src/async_fifo.v src/cdc_sync.v src/credit_counter.v \
                src/cxl_ucie_bridge.v
 COV_DIR := sim/obj_dir_cov
 
-.PHONY: help lint sim regress stress coverage formal ci cocotb test check clean
+.PHONY: help lint sim regress stress coverage formal ci cocotb test check clean waves wave gtkwave
 
 help:
 	@echo "ucie-cxl-bridge — common targets"
@@ -30,6 +30,10 @@ help:
 	@echo "  make coverage  — Verilator C++ coverage (stub; see doc/PLAN.md)"
 	@echo "  make formal    — SymbiYosys BMC + cover (sync_fifo, reset_drain, bridge)"
 	@echo "  make ci        — regress + formal (comprehensive)"
+	@echo "  make waves     — dump the default sim run (directed smoke + random-traffic"
+	@echo "                   stress phase) to build/waves.vcd"
+	@echo "  make wave      — waves, then open build/waves.vcd in GTKWave with the"
+	@echo "                   curated signal layout (alias: make gtkwave)"
 	@echo "  make clean     — remove simulation build artifacts"
 	@echo ""
 	@echo "  See DV_STANDARDS.md for the common target vocabulary shared"
@@ -90,6 +94,15 @@ formal:
 # Comprehensive local run.
 ci: regress formal
 	@echo "[CI] regress + formal PASSED"
+
+# Waveform dump: the default sim run (directed smoke phases + the always-on
+# randomized-traffic stress loop in tb_cxl_ucie_bridge.v) to build/waves.vcd.
+waves:
+	$(MAKE) -C verification/directed vcd
+
+# Dump then open in GTKWave with the curated signal layout (blocks until GTKWave exits).
+wave gtkwave:
+	$(MAKE) -C verification/directed gtkwave
 
 cocotb:
 	$(MAKE) -C verification/cocotb
