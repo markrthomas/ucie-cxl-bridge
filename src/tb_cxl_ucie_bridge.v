@@ -39,6 +39,7 @@ module tb_cxl_ucie_bridge;
   wire        drain_done;
 
   reg [31:0] seed;
+  reg [31:0] plus_seed;
   integer cyc;
   integer p1_c2u_sent, p1_u2c_sent;
 
@@ -579,6 +580,11 @@ module tb_cxl_ucie_bridge;
     link_up              = 1'b0;
     err_inj_en           = 1'b0;
     seed                 = 32'hACE15EED;
+    // +seed=<n> reseeds the random stress traffic (`make wave` passes a fresh
+    // one); 0 is rnd32's fixed point, so it keeps the default.
+    if ($value$plusargs("seed=%d", plus_seed) && plus_seed != 0)
+      seed               = plus_seed;
+    $display("[TB] stress seed = 0x%08h", seed);
     pl_seq               = {W{1'b0}};
     c2u_posted_gold_wr   = 0;
     c2u_posted_gold_rd   = 0;
