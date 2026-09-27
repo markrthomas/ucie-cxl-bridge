@@ -35,7 +35,7 @@ $(CREDIT_OUT): $(CREDIT_SOURCES) | $(BUILD_DIR)
 
 # Regenerate simulation and write $(VCD) (run from this directory so path matches $dumpfile)
 vcd: compile
-	vvp $(OUT) +vcd
+	vvp $(OUT) +vcd $(if $(SEED),+seed=$(SEED))
 
 # Generate VCD then open in gtkwave (blocking until gtkwave exits)
 gtkwave: vcd

@@ -31,9 +31,10 @@ help:
 	@echo "  make formal    — SymbiYosys BMC + cover (sync_fifo, reset_drain, bridge)"
 	@echo "  make ci        — regress + formal (comprehensive)"
 	@echo "  make waves     — dump the default sim run (directed smoke + random-traffic"
-	@echo "                   stress phase) to build/waves.vcd"
-	@echo "  make wave      — waves, then open build/waves.vcd in GTKWave with the"
-	@echo "                   curated signal layout (alias: make gtkwave)"
+	@echo "                   stress phase) to build/waves.vcd (SEED=n reseeds it)"
+	@echo "  make wave      — waves with a fresh random SEED (SEED=n replays), then open"
+	@echo "                   it in GTKWave with the curated layout, zoomed to fit"
+	@echo "  make gtkwave   — fixed-seed waves, then GTKWave (blocking)"
 	@echo "  make clean     — remove simulation build artifacts"
 	@echo ""
 	@echo "  See DV_STANDARDS.md for the common target vocabulary shared"
@@ -97,11 +98,32 @@ ci: regress formal
 
 # Waveform dump: the default sim run (directed smoke phases + the always-on
 # randomized-traffic stress loop in tb_cxl_ucie_bridge.v) to build/waves.vcd.
+# SEED=<n> reseeds the stress traffic (+seed); unset keeps the fixed default.
 waves:
 	$(MAKE) -C verification/directed vcd
 
-# Dump then open in GTKWave with the curated signal layout (blocks until GTKWave exits).
-wave gtkwave:
+# wave: one random run end to end — the same sim with a fresh random SEED each
+# run (printed; SEED=<n> replays), PASS/FAIL from the log, then GTKWave with the
+# curated layout zoomed to fit (verification/directed/zoom_full.tcl). Waves open
+# on a FAIL too; a missing gtkwave is a clean skip. `gtkwave` keeps the old
+# fixed-seed dump + blocking viewer.
+DIR_DIR   := verification/directed
+WAVE_SEED := $(or $(SEED),$(shell echo $$(( $$(od -An -N4 -tu4 /dev/urandom) % 2147483646 + 1 ))))
+wave:
+	@echo "[WAVE] directed + random stress with seed: SEED=$(WAVE_SEED)"
+	@mkdir -p $(DIR_DIR)/build
+	-$(MAKE) -C $(DIR_DIR) vcd SEED=$(WAVE_SEED) | tee $(DIR_DIR)/build/wave.log
+	@if grep -q "^PASS stress " $(DIR_DIR)/build/wave.log && ! grep -q "^FAIL" $(DIR_DIR)/build/wave.log; then \
+		echo "[WAVE] PASS (SEED=$(WAVE_SEED))"; \
+	else echo "[WAVE] *** TEST FAILED (SEED=$(WAVE_SEED)) — opening waves for debug ***"; fi
+	@if command -v gtkwave >/dev/null 2>&1; then \
+		echo "[WAVE] opening $(DIR_DIR)/build/waves.vcd with cxl_ucie_bridge.gtkw"; \
+		cd $(DIR_DIR) && exec gtkwave -S zoom_full.tcl build/waves.vcd cxl_ucie_bridge.gtkw; \
+	else \
+		echo "[WAVE] gtkwave not on PATH — VCD is at $(DIR_DIR)/build/waves.vcd"; \
+	fi
+
+gtkwave:
 	$(MAKE) -C verification/directed gtkwave
 
 cocotb:

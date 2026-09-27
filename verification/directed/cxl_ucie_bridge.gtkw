@@ -11,56 +11,53 @@ tb_cxl_ucie_bridge.rst_n
 -CXL->UCIe Ingress
 tb_cxl_ucie_bridge.cxl_in_valid
 tb_cxl_ucie_bridge.cxl_in_ready
-@200
+@22
 tb_cxl_ucie_bridge.cxl_in_data[63:0]
 
 @28
 -CXL->UCIe Egress
 tb_cxl_ucie_bridge.ucie_out_valid
 tb_cxl_ucie_bridge.ucie_out_ready
-@200
+@22
 tb_cxl_ucie_bridge.ucie_out_data[63:0]
 
 @28
 -UCIe->CXL Ingress
 tb_cxl_ucie_bridge.ucie_in_valid
 tb_cxl_ucie_bridge.ucie_in_ready
-@200
+@22
 tb_cxl_ucie_bridge.ucie_in_data[63:0]
 
 @28
 -UCIe->CXL Egress
 tb_cxl_ucie_bridge.cxl_out_valid
 tb_cxl_ucie_bridge.cxl_out_ready
-@200
+@22
 tb_cxl_ucie_bridge.cxl_out_data[63:0]
 
 @28
 -c2u Posted FIFO
-tb_cxl_ucie_bridge.dut.c2u_posted_full
-tb_cxl_ucie_bridge.dut.c2u_posted_empty
+tb_cxl_ucie_bridge.dut.c2u_posted_w_full
+tb_cxl_ucie_bridge.dut.c2u_posted_r_empty
 @22
-tb_cxl_ucie_bridge.dut.u_c2u_posted.count[3:0]
 
 @28
 -c2u NP FIFO
-tb_cxl_ucie_bridge.dut.c2u_np_full
-tb_cxl_ucie_bridge.dut.c2u_np_empty
+tb_cxl_ucie_bridge.dut.c2u_np_w_full
+tb_cxl_ucie_bridge.dut.c2u_np_r_empty
 @22
-tb_cxl_ucie_bridge.dut.u_c2u_np.count[3:0]
 
 @28
 -u2c FIFO
-tb_cxl_ucie_bridge.dut.u2c_full
-tb_cxl_ucie_bridge.dut.u2c_empty
+tb_cxl_ucie_bridge.dut.u2c_w_full
+tb_cxl_ucie_bridge.dut.u2c_r_empty
 @22
-tb_cxl_ucie_bridge.dut.u_u2c.count[3:0]
 
 @28
 -Credit Counters
-tb_cxl_ucie_bridge.dut.posted_credits_avail
-tb_cxl_ucie_bridge.dut.np_credits_avail
-tb_cxl_ucie_bridge.dut.cpl_credits_avail
+tb_cxl_ucie_bridge.dut.posted_crd_avail
+tb_cxl_ucie_bridge.dut.np_crd_avail
+tb_cxl_ucie_bridge.dut.cpl_crd_avail
 @22
 tb_cxl_ucie_bridge.dut.u_posted_crd.cnt[3:0]
 tb_cxl_ucie_bridge.dut.u_np_crd.cnt[3:0]
