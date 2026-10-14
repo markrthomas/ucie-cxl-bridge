@@ -90,7 +90,11 @@ coverage:
 
 # SymbiYosys formal verification (requires OSS CAD Suite or standalone sby).
 formal:
-	$(MAKE) -C verification/formal
+	@if command -v $(SBY) >/dev/null 2>&1; then \
+		$(MAKE) -C verification/formal; \
+	else \
+		echo "[FORMAL] $(SBY) not found; install SymbiYosys (OSS CAD Suite) to run formal"; \
+	fi
 
 # Comprehensive local run.
 ci: regress formal
