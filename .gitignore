@@ -32,3 +32,5 @@ work/
 *.swp
 .codex
 NOTES
+/verification/random/runs/
+/docker/last-run-metrics.json
