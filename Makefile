@@ -44,6 +44,9 @@ help:
 	@echo "    make -C verification/directed [lint|sim|stress|vcd|gtkwave|clean]"
 	@echo "    make -C verification/formal   [all|sync_fifo|reset_drain|cxl_ucie_bridge|clean]"
 	@echo "    make -C verification/uvm      (VCS UVM stub — local only)"
+	@echo "  swarm      Swarm A (verification) via Claude Code; swarm-rr = Swarm B (random regression); swarm-dry = show the command"
+	@echo "  batch      the Railway batch (docker/entrypoint.sh ci); board = swarm status; heavy T=<t> = one heavy target at a time"
+	@echo "  swarm-profile / swarm-kit-check   print .claude/swarm.env / check kit drift (shared kit: markrthomas/dv-swarm-kit)"
 
 # Verilator RTL lint (no testbench; delegates to directed/ which runs from repo root).
 lint:
@@ -139,3 +142,6 @@ test: cocotb
 clean:
 	$(MAKE) -C verification/directed clean
 	rm -rf $(COV_DIR) sim/coverage.info
+
+# shared swarm/infra targets (markrthomas/dv-swarm-kit)
+include swarm.mk
