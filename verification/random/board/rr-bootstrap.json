@@ -1,0 +1,18 @@
+{
+ "worker": "rr-bootstrap",
+ "state": "running",
+ "history": [
+  {
+   "t": "2026-11-18T19:21:31+00:00",
+   "state": "running",
+   "step": 0,
+   "msg": "started"
+  }
+ ],
+ "task": "bootstrap rr flow",
+ "steps": 5,
+ "step": 0,
+ "updated": "2026-11-18T19:21:31+00:00",
+ "branch": "swarm/2026-11-18-rr-bootstrap",
+ "sha": "5f8fc6d"
+}
