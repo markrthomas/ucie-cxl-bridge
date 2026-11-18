@@ -452,6 +452,49 @@ module tb_cxl_ucie_bridge;
     end
   endtask
 
+  // End-of-stress source shutdown. Call right after the drain edge's
+  // scoreboard_step_clk(). A header with length>0 obliges the sender to
+  // deliver ceil(length/2) payload beats (README "multi-beat payload
+  // transport"); the egress is cut-through, so a burst abandoned mid-packet
+  // stalls that class's payload FIFO and every header queued behind it.
+  // So: stop new headers, but keep each source valid until the DUT ingress
+  // reports no payload beats owed (its own framing state, the same signal the
+  // scoreboard uses to skip payload beats). Data only advances after an
+  // accepted beat, so valid/data stay stable under back-pressure.
+  task automatic stop_sources_after_bursts;
+    begin
+      fork
+        begin : fin_c2u  // clk domain; we are at a clk edge, DUT NBAs pending
+          if (cxl_in_valid && cxl_in_ready)
+            cxl_in_data <= cxl_in_data + 64'h00000000_00001001;
+          #1;
+          while (dut.c2u_ing_is_payload) begin
+            cxl_in_valid = 1'b1;
+            @(posedge clk);
+            if (cxl_in_valid && cxl_in_ready)
+              cxl_in_data <= cxl_in_data + 64'h00000000_00001001;
+            #1;
+          end
+          cxl_in_valid = 1'b0;
+        end
+        begin : fin_u2c  // ucie_clk domain
+          // Drop a header that has not been taken yet at the next ucie_clk
+          // edge (as before); only an owed payload beat keeps valid high.
+          #1;
+          if (!dut.u2c_ing_is_payload) ucie_in_valid = 1'b0;
+          while (dut.u2c_ing_is_payload) begin
+            ucie_in_valid = 1'b1;
+            @(posedge ucie_clk);
+            if (ucie_in_valid && ucie_in_ready)
+              ucie_in_data <= ucie_in_data ^ 64'h10000000_00000001;
+            #1;
+          end
+          ucie_in_valid = 1'b0;
+        end
+      join
+    end
+  endtask
+
   task automatic scoreboard_step_ucie;
     begin
       // c2u output: buffer header beats as observed; reconcile on clk.
@@ -1208,31 +1251,33 @@ module tb_cxl_ucie_bridge;
       end
     end
 
-    // Drain: hold both sinks ready, stop new sources
+    // Drain: hold both sinks ready, stop new headers (finishing any
+    // in-flight payload burst, see stop_sources_after_bursts)
     @(posedge clk);
     scoreboard_step_clk();
 
-    cxl_in_valid   <= 1'b0;
-    ucie_in_valid  <= 1'b0;
     ucie_out_ready <= 1'b1;
     cxl_out_ready  <= 1'b1;
 
-    repeat (FIFO_DEPTH + 64) begin
-      @(posedge clk);
+    fork
+      stop_sources_after_bursts();
+      repeat (FIFO_DEPTH + 64) begin
+        @(posedge clk);
 
-      if (cxl_out_valid && cxl_out_ready && !dut.u2c_egr_is_payload) begin
-        if (u2c_gold_rd >= u2c_gold_wr) begin
-          $display("FAIL: drain u2c underrun");
-          $finish(1);
+        if (cxl_out_valid && cxl_out_ready && !dut.u2c_egr_is_payload) begin
+          if (u2c_gold_rd >= u2c_gold_wr) begin
+            $display("FAIL: drain u2c underrun");
+            $finish(1);
+          end
+          if (cxl_out_data !== gold_u2c[u2c_gold_rd]) begin
+            $display("FAIL: drain u2c mismatch exp=%h got=%h", gold_u2c[u2c_gold_rd], cxl_out_data);
+            $finish(1);
+          end
+          u2c_gold_rd = u2c_gold_rd + 1;
+          u2c_rcvd    = u2c_rcvd + 1;
         end
-        if (cxl_out_data !== gold_u2c[u2c_gold_rd]) begin
-          $display("FAIL: drain u2c mismatch exp=%h got=%h", gold_u2c[u2c_gold_rd], cxl_out_data);
-          $finish(1);
-        end
-        u2c_gold_rd = u2c_gold_rd + 1;
-        u2c_rcvd    = u2c_rcvd + 1;
       end
-    end
+    join
 
     repeat (8) begin
       @(posedge clk);
@@ -1383,28 +1428,29 @@ module tb_cxl_ucie_bridge;
     @(posedge clk);
     scoreboard_step_clk();
 
-    cxl_in_valid   <= 1'b0;
-    ucie_in_valid  <= 1'b0;
     ucie_out_ready <= 1'b1;
     cxl_out_ready  <= 1'b1;
 
-    repeat (FIFO_DEPTH + 128) begin
-      @(posedge clk);
+    fork
+      stop_sources_after_bursts();
+      repeat (FIFO_DEPTH + 128) begin
+        @(posedge clk);
 
-      if (cxl_out_valid && cxl_out_ready) begin
-        if (u2c_gold_rd >= u2c_gold_wr) begin
-          $display("FAIL: heavy drain u2c underrun");
-          $finish(1);
+        if (cxl_out_valid && cxl_out_ready) begin
+          if (u2c_gold_rd >= u2c_gold_wr) begin
+            $display("FAIL: heavy drain u2c underrun");
+            $finish(1);
+          end
+          if (cxl_out_data !== gold_u2c[u2c_gold_rd]) begin
+            $display("FAIL: heavy drain u2c mismatch exp=%h got=%h",
+                     gold_u2c[u2c_gold_rd], cxl_out_data);
+            $finish(1);
+          end
+          u2c_gold_rd = u2c_gold_rd + 1;
+          u2c_rcvd    = u2c_rcvd + 1;
         end
-        if (cxl_out_data !== gold_u2c[u2c_gold_rd]) begin
-          $display("FAIL: heavy drain u2c mismatch exp=%h got=%h",
-                   gold_u2c[u2c_gold_rd], cxl_out_data);
-          $finish(1);
-        end
-        u2c_gold_rd = u2c_gold_rd + 1;
-        u2c_rcvd    = u2c_rcvd + 1;
       end
-    end
+    join
 
     repeat (8) begin
       @(posedge clk);
