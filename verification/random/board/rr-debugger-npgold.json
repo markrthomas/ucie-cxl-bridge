@@ -1,0 +1,18 @@
+{
+ "worker": "rr-debugger-npgold",
+ "state": "running",
+ "history": [
+  {
+   "t": "2026-11-18T19:26:04+00:00",
+   "state": "running",
+   "step": 0,
+   "msg": "started"
+  }
+ ],
+ "task": "debug cluster c2u np gold not empty (seeds 5024,5030)",
+ "steps": 5,
+ "step": 0,
+ "updated": "2026-11-18T19:26:04+00:00",
+ "branch": "swarm/2026-11-18-rr-npgold",
+ "sha": "09506e1"
+}
