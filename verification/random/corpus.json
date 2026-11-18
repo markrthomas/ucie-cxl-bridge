@@ -1,0 +1,16 @@
+[
+  {
+    "name": "c2u-np-gold-midburst-5024",
+    "seed": 5024,
+    "config": "stress=0",
+    "signature": "FAIL: cNu np gold not empty wr=N rd=N",
+    "fixed": true
+  },
+  {
+    "name": "c2u-np-gold-midburst-5030",
+    "seed": 5030,
+    "config": "stress=0",
+    "signature": "FAIL: cNu np gold not empty wr=N rd=N",
+    "fixed": true
+  }
+]

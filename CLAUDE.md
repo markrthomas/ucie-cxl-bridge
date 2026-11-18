@@ -22,9 +22,8 @@ then optional. Details: `verification/uvm/vlt/README.md`.
 
 ## Agent swarms (repo notes)
 The swarm itself is the shared kit described in the block below; this repo's profile is `.claude/swarm.env`
-(envs: `sim cocotb credit`; gate: `make check`; RTL in `src/`; no cross-check target). There is no random regression yet:
-`RR_STATUS=bootstrap`, so the first Swarm B run builds `make rr-build/rr/rr-triage/rr-replay` under `verification/random/`
-(rr-bootstrap skill) and opens a PR for it.
+(envs: `sim cocotb credit`; gate: `make check`; RTL in `src/`; no cross-check target). Random regression present
+(`RR_STATUS=present`): `make rr*` under `verification/random/`, bootstrapped by Swarm B 2026-11-18.
 
 <!-- swarm-kit:begin (managed by markrthomas/dv-swarm-kit sync.sh — edit the kit, not this block) -->
 ## Agent swarms, run targets and tokens (swarm-kit)
@@ -62,3 +61,9 @@ Batch results go to the `metrics-data` branch (`runs/<UTC>-<sha>/`), never to `m
 (when `GITHUB_TOKEN` is set), elsewhere only with `PUBLISH_METRICS=1`. Tokens live only in
 GitHub/Codespaces/Railway secret stores — never in the repo, the image, a log or a chat.
 <!-- swarm-kit:end -->
+
+## Random regression
+`make rr-build`, `make rr N=<n> JOBS=<j> [SEED=<s>]`, `make rr-triage RUN=<dir>`, `make rr-replay`
+(`verification/random/`: Icarus + the directed TB scoreboard; its README has the contract, knobs, backlog).
+`rr-replay` (corpus entries marked fixed must PASS) is part of `make regress`. Owner: set `RR_STATUS=present`
+in `.claude/swarm.env`.

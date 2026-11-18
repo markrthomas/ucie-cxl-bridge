@@ -15,7 +15,7 @@ BRIDGE_SRCS := src/async_fifo.v src/cdc_sync.v src/credit_counter.v \
                src/cxl_ucie_bridge.v
 COV_DIR := sim/obj_dir_cov
 
-.PHONY: help lint sim regress stress coverage formal ci cocotb test check clean waves wave gtkwave
+.PHONY: rr-build rr rr-triage rr-replay help lint sim regress stress coverage formal ci cocotb test check clean waves wave gtkwave
 
 help:
 	@echo "ucie-cxl-bridge — common targets"
@@ -44,6 +44,7 @@ help:
 	@echo "    make -C verification/directed [lint|sim|stress|vcd|gtkwave|clean]"
 	@echo "    make -C verification/formal   [all|sync_fifo|reset_drain|cxl_ucie_bridge|clean]"
 	@echo "    make -C verification/uvm      (VCS UVM stub — local only)"
+	@echo "  rr-build / rr N=<n> JOBS=<j> [SEED=<s>] / rr-triage RUN=<dir> / rr-replay - random regression (verification/random/README.md)"
 	@echo "  swarm      Swarm A (verification) via Claude Code; swarm-rr = Swarm B (random regression); swarm-dry = show the command"
 	@echo "  batch      the Railway batch (docker/entrypoint.sh ci); board = swarm status; heavy T=<t> = one heavy target at a time"
 	@echo "  swarm-profile / swarm-kit-check   print .claude/swarm.env / check kit drift (shared kit: markrthomas/dv-swarm-kit)"
@@ -69,8 +70,8 @@ check: lint sim
 	@echo "[CHECK] lint + directed sim PASSED"
 
 # fast CI gate.
-regress: lint sim credit
-	@echo "[REGRESS] lint + directed sim + credit PASSED"
+regress: lint sim credit rr-replay
+	@echo "[REGRESS] lint + directed sim + credit + rr-replay PASSED"
 
 # coverage: Verilator --coverage build + run; emits sim/coverage.info (lcov format).
 coverage:
@@ -142,6 +143,18 @@ test: cocotb
 clean:
 	$(MAKE) -C verification/directed clean
 	rm -rf $(COV_DIR) sim/coverage.info
+
+# random regression (verification/random/): seeded runs of the directed TB scoreboard
+RR_PY := python3 verification/random/rr.py
+rr-build:
+	$(RR_PY) build
+rr: rr-build
+	$(RR_PY) run --n $(or $(N),10) --jobs $(or $(JOBS),2) --seed $(or $(SEED),1)
+rr-triage:
+	@test -n "$(RUN)" || { echo "usage: make rr-triage RUN=<dir>"; exit 2; }
+	$(RR_PY) triage $(RUN)
+rr-replay: rr-build
+	$(RR_PY) replay
 
 # shared swarm/infra targets (markrthomas/dv-swarm-kit)
 include swarm.mk

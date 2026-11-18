@@ -1,0 +1,31 @@
+{
+ "worker": "rr-debugger-npgold",
+ "state": "done",
+ "history": [
+  {
+   "t": "2026-11-18T19:26:04+00:00",
+   "state": "running",
+   "step": 0,
+   "msg": "started"
+  },
+  {
+   "t": "2026-11-18T19:30:14+00:00",
+   "state": "running",
+   "step": 3,
+   "msg": "root cause TB drain abandons in-flight payload burst; fix + corpus promoted, running gate"
+  },
+  {
+   "t": "2026-11-18T19:31:00+00:00",
+   "state": "done",
+   "step": 5,
+   "msg": "TB bug (drain abandons payload burst) fixed on swarm/2026-11-18-rr-npgold; rr 100/100 pass, check pass, replay clean"
+  }
+ ],
+ "task": "debug cluster c2u np gold not empty (seeds 5024,5030)",
+ "steps": 5,
+ "step": 5,
+ "updated": "2026-11-18T19:31:00+00:00",
+ "branch": "swarm/2026-11-18-rr-npgold",
+ "sha": "d254e01",
+ "blocker": ""
+}

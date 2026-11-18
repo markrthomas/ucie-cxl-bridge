@@ -34,3 +34,4 @@ work/
 NOTES
 /verification/random/runs/
 /docker/last-run-metrics.json
+verification/random/build/
