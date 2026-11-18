@@ -22,9 +22,8 @@ then optional. Details: `verification/uvm/vlt/README.md`.
 
 ## Agent swarms (repo notes)
 The swarm itself is the shared kit described in the block below; this repo's profile is `.claude/swarm.env`
-(envs: `sim cocotb credit`; gate: `make check`; RTL in `src/`; no cross-check target). There is no random regression yet:
-`RR_STATUS=bootstrap`, so the first Swarm B run builds `make rr-build/rr/rr-triage/rr-replay` under `verification/random/`
-(rr-bootstrap skill) and opens a PR for it.
+(envs: `sim cocotb credit`; gate: `make check`; RTL in `src/`; no cross-check target). Random regression present
+(`RR_STATUS=present`): `make rr*` under `verification/random/`, bootstrapped by Swarm B 2026-11-18.
 
 <!-- swarm-kit:begin (managed by markrthomas/dv-swarm-kit sync.sh — edit the kit, not this block) -->
 ## Agent swarms, run targets and tokens (swarm-kit)
