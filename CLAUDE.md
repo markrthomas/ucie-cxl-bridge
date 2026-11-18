@@ -62,3 +62,9 @@ Batch results go to the `metrics-data` branch (`runs/<UTC>-<sha>/`), never to `m
 (when `GITHUB_TOKEN` is set), elsewhere only with `PUBLISH_METRICS=1`. Tokens live only in
 GitHub/Codespaces/Railway secret stores — never in the repo, the image, a log or a chat.
 <!-- swarm-kit:end -->
+
+## Random regression
+`make rr-build`, `make rr N=<n> JOBS=<j> [SEED=<s>]`, `make rr-triage RUN=<dir>`, `make rr-replay`
+(`verification/random/`: Icarus + the directed TB scoreboard; its README has the contract, knobs, backlog).
+`rr-replay` (corpus entries marked fixed must PASS) is part of `make regress`. Owner: set `RR_STATUS=present`
+in `.claude/swarm.env`.
